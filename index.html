@@ -1,0 +1,2304 @@
+<!DOCTYPE html>
+<html lang="vi" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="DocScan PDF" />
+  <meta name="theme-color" content="#090d16" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+  <link rel="apple-touch-icon" href="./icon.svg" />
+  <title>DocScan Study PDF - Ứng dụng Quét Sách & Đóng Gói PDF Chuẩn iOS</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Thư viện jsPDF đóng gói PDF đa trang 100% Client-side -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <!-- React 18 & ReactDOM 18 UMD + Babel cho Zero-Build Runtime -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    * {
+      -webkit-tap-highlight-color: transparent;
+      box-sizing: border-box;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background-color: #090d16;
+      color: #f1f5f9;
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+      overscroll-behavior-y: none;
+    }
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+</head>
+<body class="bg-[#090d16] text-slate-100 antialiased">
+  <div id="root"></div>
+
+  <!-- Nạp Engine Computer Vision, IndexedDB & jsPDF -->
+  <script src="./standalone-engine.js"></script>
+
+  <!-- Ứng dụng React Chuẩn iOS 18 HIG -->
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+    const {
+      loadImageElement,
+      getDefaultFullQuad,
+      compressForIOSMemoryGuard,
+      detectDocumentCorners,
+      processPagePipeline,
+      generateDemoStudyPages,
+      saveActiveWorkspacePages,
+      loadActiveWorkspacePages,
+      savePdfToAppLibrary,
+      getAllSavedPdfs,
+      renameSavedPdfInLibrary,
+      deleteSavedPdfFromLibrary,
+      base64ToBlob,
+      generateMultiPageStudyPdf,
+      sharePdfViaIOSShareSheet,
+      triggerDirectDownloadPdf
+    } = window.DocScanEngine;
+
+    // Bộ Icon chuẩn Lucide SVG
+    const Icon = ({ name, className = "w-4 h-4" }) => {
+      const icons = {
+        BookOpen: <><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></>,
+        Sparkles: <><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></>,
+        Smartphone: <><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></>,
+        ImagePlus: <><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7"/><line x1="16" x2="22" y1="5" y2="5"/><line x1="19" x2="19" y1="2" y2="8"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></>,
+        Camera: <><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></>,
+        Maximize2: <><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" x2="14" y1="3" y2="10"/><line x1="3" x2="10" y1="21" y2="14"/></>,
+        Trash2: <><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></>,
+        FileCheck: <><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="m9 15 2 2 4-4"/></>,
+        Wand2: <><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72Z"/><path d="m14 7 3 3"/></>,
+        RotateCw: <><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></>,
+        RotateCcw: <><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></>,
+        FlipHorizontal: <><path d="M8 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h3"/><path d="M16 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3"/><path d="M12 20v2"/><path d="M12 14v2"/><path d="M12 8v2"/><path d="M12 2v2"/></>,
+        FileText: <><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></>,
+        Crop: <><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></>,
+        ChevronLeft: <path d="m15 18-6-6 6-6"/>,
+        ChevronRight: <path d="m9 18 6-6-6-6"/>,
+        Plus: <><path d="M5 12h14"/><path d="M12 5v14"/></>,
+        Scissors: <><circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/><circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/></>,
+        FolderArchive: <><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/><circle cx="12" cy="13" r="2"/></>,
+        Eye: <><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></>,
+        Share2: <><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/></>,
+        Download: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></>,
+        Pencil: <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>,
+        Check: <path d="M20 6 9 17l-5-5"/>,
+        X: <><path d="M18 6 6 18"/><path d="m6 6 12 12"/></>,
+        RefreshCw: <><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></>,
+        Grid: <><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/></>,
+        Sun: <><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></>,
+        Sliders: <><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="2" x2="6" y1="14" y2="14"/><line x1="10" x2="14" y1="8" y2="8"/><line x1="18" x2="22" y1="16" y2="16"/></>,
+        Layers: <><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></>,
+        ZoomIn: <><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/><line x1="11" x2="11" y1="8" y2="14"/><line x1="8" x2="14" y1="11" y2="11"/></>
+      };
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={className}
+        >
+          {icons[name] || null}
+        </svg>
+      );
+    };
+
+    function App() {
+      const [activeTab, setActiveTab] = useState('scanner');
+      const [pages, setPages] = useState([]);
+      const [isRestoringDB, setIsRestoringDB] = useState(true);
+      const [savedPdfs, setSavedPdfs] = useState([]);
+      const [busyState, setBusyState] = useState({ active: false, title: '', current: 0, total: 0 });
+      const [toastMsg, setToastMsg] = useState(null);
+      const [insertAfterIndex, setInsertAfterIndex] = useState(null);
+      const [draggedIndex, setDraggedIndex] = useState(null);
+      const [dragOverIndex, setDragOverIndex] = useState(null);
+
+      // Page Studio Modal state
+      const [editingPageIndex, setEditingPageIndex] = useState(null);
+      const [studioTab, setStudioTab] = useState('crop');
+      const [draftQuad, setDraftQuad] = useState(getDefaultFullQuad());
+      const [draftCropMode, setDraftCropMode] = useState('quad');
+      const [draftRotation90, setDraftRotation90] = useState(0);
+      const [draftFineAngle, setDraftFineAngle] = useState(0);
+      const [draftOrientation, setDraftOrientation] = useState('auto');
+      const [draftFilterMode, setDraftFilterMode] = useState('magic_color');
+      const [draftBrightness, setDraftBrightness] = useState(65);
+      const [draftContrast, setDraftContrast] = useState(65);
+      const [studioPreviewUrl, setStudioPreviewUrl] = useState('');
+      const [isUpdatingPreview, setIsUpdatingPreview] = useState(false);
+
+      // 3x Magnifier Loupe
+      const [activeHandle, setActiveHandle] = useState(null);
+      const [loupePoint, setLoupePoint] = useState(null);
+      const cropStageRef = useRef(null);
+      const loupeCanvasRef = useRef(null);
+      const editingSourceImgRef = useRef(null);
+
+      // Export & Save PDF Modal (Module 5)
+      const [showExportModal, setShowExportModal] = useState(false);
+      const [pdfFileName, setPdfFileName] = useState(() => {
+        const now = new Date();
+        const d = String(now.getDate()).padStart(2, '0');
+        const m = String(now.getMonth() + 1).padStart(2, '0');
+        return `Bai_Hoc_DocScan_${d}_${m}`;
+      });
+      const [pdfLayout, setPdfLayout] = useState('fit');
+      const [pdfOrientation, setPdfOrientation] = useState('auto');
+      const [pdfQuality, setPdfQuality] = useState('hd');
+      const [generatedPkg, setGeneratedPkg] = useState(null);
+      const [isSavedToAppLib, setIsSavedToAppLib] = useState(false);
+
+      // In-App PDF Reader & Rename
+      const [readingPdf, setReadingPdf] = useState(null);
+      const [readerZoom, setReaderZoom] = useState(100);
+      const [renamingPdfId, setRenamingPdfId] = useState(null);
+      const [renameValue, setRenameValue] = useState('');
+
+      // iOS PWA Guide & Live Camera
+      const [showIOSGuide, setShowIOSGuide] = useState(false);
+      const [showLiveCamera, setShowLiveCamera] = useState(false);
+      const videoRef = useRef(null);
+      const mediaStreamRef = useRef(null);
+      const galleryInputRef = useRef(null);
+      const cameraInputRef = useRef(null);
+
+      const showToast = (msg) => {
+        setToastMsg(msg);
+        setTimeout(() => {
+          setToastMsg((prev) => (prev === msg ? null : prev));
+        }, 3200);
+      };
+
+      useEffect(() => {
+        let mounted = true;
+        (async () => {
+          try {
+            const [restoredPages, restoredLibrary] = await Promise.all([
+              loadActiveWorkspacePages(),
+              getAllSavedPdfs()
+            ]);
+            if (mounted) {
+              setPages(restoredPages);
+              setSavedPdfs(restoredLibrary);
+            }
+          } catch (err) {
+            console.error(err);
+          } finally {
+            if (mounted) setIsRestoringDB(false);
+          }
+        })();
+        return () => { mounted = false; };
+      }, []);
+
+      useEffect(() => {
+        if (isRestoringDB) return;
+        saveActiveWorkspacePages(pages).catch(console.error);
+      }, [pages, isRestoringDB]);
+
+      const handleImportFiles = async (fileList) => {
+        const items = Array.from(fileList);
+        if (items.length === 0) return;
+
+        setBusyState({
+          active: true,
+          title: 'Đang nén bảo vệ RAM iOS & Tự động cắt biên trang sách...',
+          current: 0,
+          total: items.length
+        });
+
+        const newlyProcessed = [];
+        for (let i = 0; i < items.length; i++) {
+          setBusyState({
+            active: true,
+            title: `Đang xử lý Trang ${i + 1}/${items.length} (Auto-Crop & Magic Color)...`,
+            current: i + 1,
+            total: items.length
+          });
+
+          try {
+            const compressed = await compressForIOSMemoryGuard(items[i], 2200, 0.92);
+            const imgEl = await loadImageElement(compressed.dataUrl);
+            const detectedQuad = detectDocumentCorners(imgEl);
+
+            const processed = await processPagePipeline({
+              originalDataUrl: compressed.dataUrl,
+              cropQuad: detectedQuad,
+              rotation90: 0,
+              fineAngle: 0,
+              filterMode: 'magic_color',
+              brightness: 65,
+              contrast: 65
+            });
+
+            newlyProcessed.push({
+              id: `page_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${i}`,
+              createdAt: Date.now() + i,
+              originalDataUrl: compressed.dataUrl,
+              processedDataUrl: processed.processedDataUrl,
+              originalWidth: compressed.width,
+              originalHeight: compressed.height,
+              processedWidth: processed.width,
+              processedHeight: processed.height,
+              cropQuad: detectedQuad,
+              cropMode: 'quad',
+              isAutoCropped: true,
+              rotation90: 0,
+              fineAngle: 0,
+              orientation: 'auto',
+              filterMode: 'magic_color',
+              brightness: 65,
+              contrast: 65
+            });
+          } catch (err) {
+            console.error(err);
+          }
+        }
+
+        setPages((prev) => {
+          if (insertAfterIndex !== null && insertAfterIndex >= 0 && insertAfterIndex < prev.length) {
+            const copy = [...prev];
+            copy.splice(insertAfterIndex + 1, 0, ...newlyProcessed);
+            return copy;
+          }
+          return [...prev, ...newlyProcessed];
+        });
+
+        setInsertAfterIndex(null);
+        setBusyState({ active: false, title: '', current: 0, total: 0 });
+        showToast(`Đã thêm & tự động cắt gọn ${newlyProcessed.length} trang sách!`);
+      };
+
+      const handleLoadDemoPages = async () => {
+        setBusyState({
+          active: true,
+          title: 'Đang dựng 2 trang sách giáo trình mẫu có bóng râm & nền bàn gỗ...',
+          current: 1,
+          total: 2
+        });
+        try {
+          const demoUrls = await generateDemoStudyPages();
+          await handleImportFiles(demoUrls);
+        } catch (err) {
+          console.error(err);
+          setBusyState({ active: false, title: '', current: 0, total: 0 });
+        }
+      };
+
+      const handleBatchAutoCropAll = async () => {
+        if (pages.length === 0) return;
+        setBusyState({
+          active: true,
+          title: '⚡ Đang tự động phát hiện biên & cắt phẳng toàn bộ trang...',
+          current: 0,
+          total: pages.length
+        });
+
+        const updated = [];
+        for (let i = 0; i < pages.length; i++) {
+          setBusyState({
+            active: true,
+            title: `⚡ Đang Auto-Crop trang ${i + 1}/${pages.length}...`,
+            current: i + 1,
+            total: pages.length
+          });
+          const p = pages[i];
+          const img = await loadImageElement(p.originalDataUrl);
+          const autoQuad = detectDocumentCorners(img);
+          const res = await processPagePipeline({
+            originalDataUrl: p.originalDataUrl,
+            cropQuad: autoQuad,
+            rotation90: p.rotation90,
+            fineAngle: p.fineAngle,
+            filterMode: p.filterMode,
+            brightness: p.brightness,
+            contrast: p.contrast
+          });
+          updated.push({
+            ...p,
+            cropQuad: autoQuad,
+            isAutoCropped: true,
+            processedDataUrl: res.processedDataUrl,
+            processedWidth: res.width,
+            processedHeight: res.height
+          });
+        }
+        setPages(updated);
+        setBusyState({ active: false, title: '', current: 0, total: 0 });
+        showToast(`⚡ Đã tự động cắt gọn gàng toàn bộ ${updated.length} trang!`);
+      };
+
+      const handleBatchRotateAll = async () => {
+        if (pages.length === 0) return;
+        setBusyState({
+          active: true,
+          title: 'Đang xoay +90° toàn bộ các trang...',
+          current: 0,
+          total: pages.length
+        });
+
+        const updated = [];
+        for (let i = 0; i < pages.length; i++) {
+          setBusyState({
+            active: true,
+            title: `Đang xoay trang ${i + 1}/${pages.length}...`,
+            current: i + 1,
+            total: pages.length
+          });
+          const p = pages[i];
+          const nextRot = (p.rotation90 + 90) % 360;
+          const res = await processPagePipeline({
+            originalDataUrl: p.originalDataUrl,
+            cropQuad: p.cropQuad,
+            rotation90: nextRot,
+            fineAngle: p.fineAngle,
+            filterMode: p.filterMode,
+            brightness: p.brightness,
+            contrast: p.contrast
+          });
+          updated.push({
+            ...p,
+            rotation90: nextRot,
+            processedDataUrl: res.processedDataUrl,
+            processedWidth: res.width,
+            processedHeight: res.height
+          });
+        }
+        setPages(updated);
+        setBusyState({ active: false, title: '', current: 0, total: 0 });
+        showToast('Đã xoay +90° tất cả các trang!');
+      };
+
+      const handleBatchApplyFilterAll = async (mode, brightnessVal = 65, contrastVal = 65) => {
+        if (pages.length === 0) return;
+        setBusyState({
+          active: true,
+          title: 'Đang áp dụng bộ lọc làm rõ chữ cho toàn bộ trang...',
+          current: 0,
+          total: pages.length
+        });
+
+        const updated = [];
+        for (let i = 0; i < pages.length; i++) {
+          setBusyState({
+            active: true,
+            title: `Đang lọc sáng rõ trang ${i + 1}/${pages.length}...`,
+            current: i + 1,
+            total: pages.length
+          });
+          const p = pages[i];
+          const res = await processPagePipeline({
+            originalDataUrl: p.originalDataUrl,
+            cropQuad: p.cropQuad,
+            rotation90: p.rotation90,
+            fineAngle: p.fineAngle,
+            filterMode: mode,
+            brightness: brightnessVal,
+            contrast: contrastVal
+          });
+          updated.push({
+            ...p,
+            filterMode: mode,
+            brightness: brightnessVal,
+            contrast: contrastVal,
+            processedDataUrl: res.processedDataUrl,
+            processedWidth: res.width,
+            processedHeight: res.height
+          });
+        }
+        setPages(updated);
+        setBusyState({ active: false, title: '', current: 0, total: 0 });
+        showToast(`Đã áp dụng bộ lọc cho tất cả ${updated.length} trang!`);
+      };
+
+      const movePageOrder = (fromIdx, toIdx) => {
+        if (toIdx < 0 || toIdx >= pages.length || fromIdx === toIdx) return;
+        setPages((prev) => {
+          const copy = [...prev];
+          const [moved] = copy.splice(fromIdx, 1);
+          copy.splice(toIdx, 0, moved);
+          return copy;
+        });
+      };
+
+      const deletePageAt = (idx) => {
+        setPages((prev) => prev.filter((_, i) => i !== idx));
+        showToast(`Đã xóa Trang ${idx + 1}`);
+      };
+
+      const openPageStudio = async (idx, initialTab = 'crop') => {
+        const p = pages[idx];
+        if (!p) return;
+        setEditingPageIndex(idx);
+        setStudioTab(initialTab);
+        setDraftQuad({
+          tl: { ...p.cropQuad.tl },
+          tr: { ...p.cropQuad.tr },
+          br: { ...p.cropQuad.br },
+          bl: { ...p.cropQuad.bl }
+        });
+        setDraftCropMode(p.cropMode || 'quad');
+        setDraftRotation90(p.rotation90);
+        setDraftFineAngle(p.fineAngle);
+        setDraftOrientation(p.orientation);
+        setDraftFilterMode(p.filterMode);
+        setDraftBrightness(p.brightness);
+        setDraftContrast(p.contrast);
+        setStudioPreviewUrl(p.processedDataUrl);
+
+        try {
+          const img = await loadImageElement(p.originalDataUrl);
+          editingSourceImgRef.current = img;
+        } catch (e) {
+          console.error(e);
+        }
+      };
+
+      useEffect(() => {
+        if (editingPageIndex === null) return;
+        const page = pages[editingPageIndex];
+        if (!page) return;
+
+        let cancelled = false;
+        setIsUpdatingPreview(true);
+
+        const timer = setTimeout(async () => {
+          try {
+            const res = await processPagePipeline({
+              originalDataUrl: page.originalDataUrl,
+              cropQuad: draftQuad,
+              rotation90: draftRotation90,
+              fineAngle: draftFineAngle,
+              filterMode: draftFilterMode,
+              brightness: draftBrightness,
+              contrast: draftContrast
+            });
+            if (!cancelled) {
+              setStudioPreviewUrl(res.processedDataUrl);
+              setIsUpdatingPreview(false);
+            }
+          } catch (e) {
+            if (!cancelled) setIsUpdatingPreview(false);
+          }
+        }, 65);
+
+        return () => {
+          cancelled = true;
+          clearTimeout(timer);
+        };
+      }, [
+        editingPageIndex,
+        draftQuad,
+        draftRotation90,
+        draftFineAngle,
+        draftFilterMode,
+        draftBrightness,
+        draftContrast
+      ]);
+
+      useEffect(() => {
+        if (!loupePoint || !loupeCanvasRef.current || !editingSourceImgRef.current) return;
+        const canvas = loupeCanvasRef.current;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        const img = editingSourceImgRef.current;
+        const srcW = img.naturalWidth || img.width;
+        const srcH = img.naturalHeight || img.height;
+        const size = canvas.width;
+        const zoom = 3.0;
+        const sampleRadius = size / (2 * zoom);
+
+        const cx = loupePoint.x * srcW;
+        const cy = loupePoint.y * srcH;
+
+        ctx.clearRect(0, 0, size, size);
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, size, size);
+        ctx.drawImage(
+          img,
+          cx - sampleRadius,
+          cy - sampleRadius,
+          sampleRadius * 2,
+          sampleRadius * 2,
+          0,
+          0,
+          size,
+          size
+        );
+
+        ctx.strokeStyle = '#22d3ee';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(size / 2, 0);
+        ctx.lineTo(size / 2, size);
+        ctx.moveTo(0, size / 2);
+        ctx.lineTo(size, size / 2);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(2, 2, size - 4, size - 4);
+      }, [loupePoint]);
+
+      const handleCropPointerMove = (e) => {
+        if (!activeHandle || !cropStageRef.current) return;
+        const rect = cropStageRef.current.getBoundingClientRect();
+        const nx = Math.max(0.0, Math.min(1.0, (e.clientX - rect.left) / rect.width));
+        const ny = Math.max(0.0, Math.min(1.0, (e.clientY - rect.top) / rect.height));
+
+        setLoupePoint({ x: nx, y: ny });
+
+        setDraftQuad((prev) => {
+          if (draftCropMode === 'quad') {
+            if (activeHandle === 'tl') return { ...prev, tl: { x: nx, y: ny } };
+            if (activeHandle === 'tr') return { ...prev, tr: { x: nx, y: ny } };
+            if (activeHandle === 'br') return { ...prev, br: { x: nx, y: ny } };
+            if (activeHandle === 'bl') return { ...prev, bl: { x: nx, y: ny } };
+          }
+
+          let left = Math.min(prev.tl.x, prev.bl.x);
+          let right = Math.max(prev.tr.x, prev.br.x);
+          let top = Math.min(prev.tl.y, prev.tr.y);
+          let bottom = Math.max(prev.bl.y, prev.br.y);
+
+          const minSpan = 0.08;
+          if (activeHandle === 'tl') {
+            left = Math.min(nx, right - minSpan);
+            top = Math.min(ny, bottom - minSpan);
+          } else if (activeHandle === 'tr') {
+            right = Math.max(nx, left + minSpan);
+            top = Math.min(ny, bottom - minSpan);
+          } else if (activeHandle === 'br') {
+            right = Math.max(nx, left + minSpan);
+            bottom = Math.max(ny, top + minSpan);
+          } else if (activeHandle === 'bl') {
+            left = Math.min(nx, right - minSpan);
+            bottom = Math.max(ny, top + minSpan);
+          } else if (activeHandle === 'top') {
+            top = Math.min(ny, bottom - minSpan);
+          } else if (activeHandle === 'bottom') {
+            bottom = Math.max(ny, top + minSpan);
+          } else if (activeHandle === 'left') {
+            left = Math.min(nx, right - minSpan);
+          } else if (activeHandle === 'right') {
+            right = Math.max(nx, left + minSpan);
+          }
+
+          return {
+            tl: { x: left, y: top },
+            tr: { x: right, y: top },
+            br: { x: right, y: bottom },
+            bl: { x: left, y: bottom }
+          };
+        });
+      };
+
+      const handleStopCropDrag = () => {
+        setActiveHandle(null);
+        setLoupePoint(null);
+      };
+
+      const switchToRectangleCropMode = () => {
+        setDraftCropMode('rect');
+        setDraftQuad((prev) => {
+          const left = Math.max(0.02, Math.min(prev.tl.x, prev.bl.x));
+          const right = Math.min(0.98, Math.max(prev.tr.x, prev.br.x));
+          const top = Math.max(0.02, Math.min(prev.tl.y, prev.tr.y));
+          const bottom = Math.min(0.98, Math.max(prev.bl.y, prev.br.y));
+          return {
+            tl: { x: left, y: top },
+            tr: { x: right, y: top },
+            br: { x: right, y: bottom },
+            bl: { x: left, y: bottom }
+          };
+        });
+      };
+
+      const saveCurrentPageStudio = async (moveToIndex = null) => {
+        if (editingPageIndex === null) return;
+        const page = pages[editingPageIndex];
+        if (!page) return;
+
+        const res = await processPagePipeline({
+          originalDataUrl: page.originalDataUrl,
+          cropQuad: draftQuad,
+          rotation90: draftRotation90,
+          fineAngle: draftFineAngle,
+          filterMode: draftFilterMode,
+          brightness: draftBrightness,
+          contrast: draftContrast
+        });
+
+        setPages((prev) =>
+          prev.map((item, idx) =>
+            idx === editingPageIndex
+              ? {
+                  ...item,
+                  cropQuad: draftQuad,
+                  cropMode: draftCropMode,
+                  rotation90: draftRotation90,
+                  fineAngle: draftFineAngle,
+                  orientation: draftOrientation,
+                  filterMode: draftFilterMode,
+                  brightness: draftBrightness,
+                  contrast: draftContrast,
+                  processedDataUrl: res.processedDataUrl,
+                  processedWidth: res.width,
+                  processedHeight: res.height
+                }
+              : item
+          )
+        );
+
+        if (moveToIndex !== null && moveToIndex >= 0 && moveToIndex < pages.length) {
+          openPageStudio(moveToIndex, studioTab);
+        } else {
+          setEditingPageIndex(null);
+          showToast(`Đã lưu chỉnh sửa Trang ${editingPageIndex + 1}!`);
+        }
+      };
+
+      const openLiveCameraModal = async () => {
+        setShowLiveCamera(true);
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1440 } },
+            audio: false
+          });
+          mediaStreamRef.current = stream;
+          if (videoRef.current) videoRef.current.srcObject = stream;
+        } catch (err) {
+          setShowLiveCamera(false);
+          cameraInputRef.current?.click();
+        }
+      };
+
+      const closeLiveCameraModal = () => {
+        if (mediaStreamRef.current) {
+          mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+          mediaStreamRef.current = null;
+        }
+        setShowLiveCamera(false);
+      };
+
+      const captureFromLiveCamera = async () => {
+        if (!videoRef.current) return;
+        const video = videoRef.current;
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth || 1280;
+        canvas.height = video.videoHeight || 960;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+        canvas.width = 0;
+        canvas.height = 0;
+        await handleImportFiles([dataUrl]);
+      };
+
+      const handleBuildPdfPackage = async () => {
+        if (pages.length === 0) return;
+        setGeneratedPkg(null);
+        setIsSavedToAppLib(false);
+
+        setBusyState({
+          active: true,
+          title: 'Đang đóng gói các trang sách thành file PDF chuẩn iOS...',
+          current: 0,
+          total: pages.length
+        });
+
+        try {
+          const pkg = await generateMultiPageStudyPdf(
+            pages,
+            {
+              fileName: pdfFileName,
+              layout: pdfLayout,
+              orientation: pdfOrientation,
+              quality: pdfQuality
+            },
+            (cur, tot) => {
+              setBusyState({
+                active: true,
+                title: `Đang kết xuất trang PDF ${cur}/${tot}...`,
+                current: cur,
+                total: tot
+              });
+            }
+          );
+
+          setGeneratedPkg(pkg);
+          showToast(`🎉 Đã tạo xong ${pkg.fileName} (${pkg.pageCount} trang)!`);
+        } catch (err) {
+          console.error(err);
+          showToast('Có lỗi khi tạo PDF, vui lòng thử lại.');
+        } finally {
+          setBusyState({ active: false, title: '', current: 0, total: 0 });
+        }
+      };
+
+      const handleIOSShareGeneratedPdf = async () => {
+        if (!generatedPkg) return;
+        const res = await sharePdfViaIOSShareSheet(generatedPkg.pdfBlob, generatedPkg.fileName);
+        showToast(res.message);
+      };
+
+      const handleDirectDownloadGeneratedPdf = () => {
+        if (!generatedPkg) return;
+        triggerDirectDownloadPdf(generatedPkg.pdfBlob, generatedPkg.fileName);
+        showToast(`⬇️ Đang tải xuống ${generatedPkg.fileName}...`);
+      };
+
+      const handleSaveToAppLibrary = async () => {
+        if (!generatedPkg) return;
+        const record = {
+          id: `pdf_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          fileName: generatedPkg.fileName,
+          createdAt: Date.now(),
+          pageCount: generatedPkg.pageCount,
+          fileSizeBytes: generatedPkg.fileSizeBytes,
+          layout: pdfLayout,
+          quality: pdfQuality,
+          coverThumbnail: generatedPkg.pageImages[0] || pages[0]?.processedDataUrl || '',
+          pageImages: generatedPkg.pageImages,
+          pdfBase64: generatedPkg.pdfBase64
+        };
+
+        await savePdfToAppLibrary(record);
+        const updatedList = await getAllSavedPdfs();
+        setSavedPdfs(updatedList);
+        setIsSavedToAppLib(true);
+        showToast('💾 Đã lưu vào Tủ sách PDF trong App!');
+      };
+
+      const formatBytes = (bytes) => {
+        if (bytes < 1024) return `${bytes} B`;
+        const kb = bytes / 1024;
+        if (kb < 1024) return `${kb.toFixed(1)} KB`;
+        return `${(kb / 1024).toFixed(2)} MB`;
+      };
+
+      const filterLabelMap = {
+        original: 'Bản gốc',
+        magic_color: 'Magic Color',
+        bw_sharp: 'Trắng Đen',
+        grayscale: 'Thang Xám'
+      };
+
+      return (
+        <div className="min-h-screen bg-[#090d16] text-slate-100 flex flex-col select-none pb-28">
+          <input
+            ref={galleryInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files && e.target.files.length > 0) {
+                handleImportFiles(e.target.files);
+                e.target.value = '';
+              }
+            }}
+          />
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files && e.target.files.length > 0) {
+                handleImportFiles(e.target.files);
+                e.target.value = '';
+              }
+            }}
+          />
+
+          {toastMsg && (
+            <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[120] max-w-[92vw] bg-slate-900/95 border border-sky-500/40 text-white px-4 py-2.5 rounded-full shadow-2xl backdrop-blur-xl flex items-center gap-2.5 text-xs sm:text-sm font-medium">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0" />
+              <span>{toastMsg}</span>
+            </div>
+          )}
+
+          {busyState.active && (
+            <div className="fixed inset-0 z-[110] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-6">
+              <div className="bg-slate-900 border border-slate-700/80 rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center space-y-4">
+                <div className="w-14 h-14 rounded-2xl bg-blue-600/20 border border-blue-500/40 flex items-center justify-center mx-auto">
+                  <Icon name="RefreshCw" className="w-7 h-7 text-blue-400 animate-spin" />
+                </div>
+                <h3 className="text-base font-bold text-white">{busyState.title}</h3>
+                {busyState.total > 0 && (
+                  <div className="space-y-1.5">
+                    <div className="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-all duration-200"
+                        style={{
+                          width: `${Math.round((busyState.current / busyState.total) * 100)}%`
+                        }}
+                      />
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      Trang {busyState.current} / {busyState.total} • iOS RAM Guard 2200px
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* HEADER CHUẨN iOS 18 */}
+          <header
+            className="sticky top-0 z-30 bg-[#090d16]/85 backdrop-blur-xl border-b border-slate-800/80 px-4 pb-3"
+            style={{ paddingTop: 'max(0.85rem, env(safe-area-inset-top))' }}
+          >
+            <div className="max-w-5xl mx-auto flex items-center justify-between gap-2">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#007AFF] to-blue-700 flex items-center justify-center shadow-lg shadow-blue-600/30 shrink-0">
+                  <Icon name="BookOpen" className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-base sm:text-lg font-extrabold tracking-tight text-white">
+                      DocScan Study PDF
+                    </h1>
+                    <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                      iOS RAM Guard 2200px
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Quét Sách Tự Động Cắt Biên • Làm Rõ Chữ • Xuất PDF Chuẩn iPhone
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleLoadDemoPages}
+                  className="px-2.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-xs font-semibold flex items-center gap-1.5 transition active:scale-95"
+                >
+                  <Icon name="Sparkles" className="w-3.5 h-3.5" />
+                  <span>Trang mẫu</span>
+                </button>
+
+                <button
+                  onClick={() => setShowIOSGuide(true)}
+                  className="px-2.5 py-1.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 border border-slate-700 text-sky-300 text-xs font-semibold flex items-center gap-1.5 transition active:scale-95"
+                >
+                  <Icon name="Smartphone" className="w-3.5 h-3.5" />
+                  <span>Hướng dẫn cài lên iPhone</span>
+                </button>
+              </div>
+            </div>
+          </header>
+
+          {/* MAIN CONTENT */}
+          <main className="flex-1 max-w-5xl w-full mx-auto px-3 sm:px-4 pt-4 space-y-4">
+            {activeTab === 'scanner' ? (
+              <>
+                {/* MODULE 1: NHẬP ẢNH HÀNG LOẠT */}
+                <section className="bg-slate-900/90 border border-slate-800 rounded-3xl p-4 shadow-xl space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                        <Icon name="ImagePlus" className="w-4 h-4 text-[#007AFF]" />
+                        <span>
+                          {insertAfterIndex !== null
+                            ? `Đang chọn ảnh để chèn vào sau Trang ${insertAfterIndex + 1}`
+                            : 'Nhập Trang Sách & Tài Liệu Học Tập'}
+                        </span>
+                      </h2>
+                      <p className="text-xs text-slate-400">
+                        Tự động nén thông minh (Max 2200px, JPEG 0.92) giúp ghép 30–50 trang mượt mà trên Safari
+                      </p>
+                    </div>
+                    {insertAfterIndex !== null && (
+                      <button
+                        onClick={() => setInsertAfterIndex(null)}
+                        className="text-xs px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                      >
+                        Hủy chế độ chèn giữa
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                    <button
+                      onClick={() => galleryInputRef.current?.click()}
+                      className="flex items-center justify-center gap-2.5 py-3.5 px-4 rounded-2xl bg-[#007AFF] hover:bg-blue-600 text-white font-bold text-xs sm:text-sm shadow-lg shadow-blue-600/25 transition active:scale-95"
+                    >
+                      <Icon name="ImagePlus" className="w-5 h-5 shrink-0" />
+                      <span>Chọn Nhiều Ảnh (iPhone)</span>
+                    </button>
+
+                    <button
+                      onClick={() => cameraInputRef.current?.click()}
+                      className="flex items-center justify-center gap-2.5 py-3.5 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm shadow-lg shadow-emerald-600/20 transition active:scale-95"
+                    >
+                      <Icon name="Camera" className="w-5 h-5 shrink-0" />
+                      <span>Chụp Từ Camera</span>
+                    </button>
+
+                    <button
+                      onClick={openLiveCameraModal}
+                      className="col-span-2 sm:col-span-1 flex items-center justify-center gap-2 py-3 px-4 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-100 font-semibold text-xs sm:text-sm transition active:scale-95"
+                    >
+                      <Icon name="Maximize2" className="w-4 h-4 text-sky-400 shrink-0" />
+                      <span>Khung Ngắm Quét Trực Tiếp</span>
+                    </button>
+                  </div>
+                </section>
+
+                {pages.length > 0 ? (
+                  <>
+                    {/* THANH CÔNG CỤ HÀNG LOẠT */}
+                    <section className="bg-slate-900/95 border border-slate-800 rounded-3xl p-3.5 shadow-xl space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2.5 py-1 rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-300 text-xs font-bold">
+                            {pages.length} trang sách
+                          </span>
+                          <span className="text-xs text-slate-400 hidden sm:inline">
+                            Bấm vào từng trang để Cắt 4 góc (kính lúp 3x), Xoay vi chỉnh hoặc Khử bóng
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              if (window.confirm('Xóa toàn bộ các trang đang quét để bắt đầu bài mới?')) {
+                                setPages([]);
+                                showToast('Đã làm mới bàn quét.');
+                              }
+                            }}
+                            className="px-2.5 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 text-xs font-semibold flex items-center gap-1"
+                          >
+                            <Icon name="Trash2" className="w-3.5 h-3.5" />
+                            <span>Xóa hết</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setGeneratedPkg(null);
+                              setIsSavedToAppLib(false);
+                              setShowExportModal(true);
+                            }}
+                            className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#007AFF] to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white text-xs sm:text-sm font-extrabold shadow-lg shadow-blue-600/30 flex items-center gap-1.5 transition active:scale-95"
+                          >
+                            <Icon name="FileCheck" className="w-4 h-4" />
+                            <span>Tạo & Lưu PDF ({pages.length})</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+                        <button
+                          onClick={handleBatchAutoCropAll}
+                          className="shrink-0 px-3 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-xs font-bold flex items-center gap-1.5 transition active:scale-95"
+                        >
+                          <Icon name="Wand2" className="w-3.5 h-3.5" />
+                          <span>⚡ Tự động cắt tất cả các trang (Batch Auto-Crop)</span>
+                        </button>
+
+                        <button
+                          onClick={handleBatchRotateAll}
+                          className="shrink-0 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition active:scale-95"
+                        >
+                          <Icon name="RotateCw" className="w-3.5 h-3.5 text-sky-400" />
+                          <span>Xoay tất cả (+90°)</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleBatchApplyFilterAll('magic_color')}
+                          className="shrink-0 px-3 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center gap-1.5 transition active:scale-95"
+                        >
+                          <Icon name="Sparkles" className="w-3.5 h-3.5" />
+                          <span>Magic Color tất cả</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleBatchApplyFilterAll('bw_sharp')}
+                          className="shrink-0 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition active:scale-95"
+                        >
+                          <Icon name="FileText" className="w-3.5 h-3.5 text-slate-300" />
+                          <span>Trắng Đen tất cả</span>
+                        </button>
+                      </div>
+                    </section>
+
+                    {/* LƯỚI TRANG SÁCH */}
+                    <section className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                      {pages.map((page, idx) => {
+                        const isLandscape =
+                          page.orientation === 'landscape' ||
+                          (page.orientation === 'auto' && page.processedWidth > page.processedHeight);
+
+                        return (
+                          <div
+                            key={page.id}
+                            draggable
+                            onDragStart={() => setDraggedIndex(idx)}
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              setDragOverIndex(idx);
+                            }}
+                            onDragEnd={() => {
+                              if (
+                                draggedIndex !== null &&
+                                dragOverIndex !== null &&
+                                draggedIndex !== dragOverIndex
+                              ) {
+                                movePageOrder(draggedIndex, dragOverIndex);
+                              }
+                              setDraggedIndex(null);
+                              setDragOverIndex(null);
+                            }}
+                            className={`group bg-slate-900/95 border rounded-2xl overflow-hidden flex flex-col shadow-lg transition ${
+                              dragOverIndex === idx
+                                ? 'border-[#007AFF] ring-2 ring-[#007AFF]/40 scale-[1.02]'
+                                : 'border-slate-800 hover:border-slate-700'
+                            }`}
+                          >
+                            <div className="px-2.5 py-2 bg-slate-950/70 border-b border-slate-800/80 flex items-center justify-between">
+                              <span className="px-2 py-0.5 rounded-lg bg-[#007AFF] text-white text-xs font-extrabold">
+                                Trang {idx + 1}
+                              </span>
+                              <div className="flex items-center gap-1">
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-medium">
+                                  {isLandscape ? 'Ngang' : 'Dọc'}
+                                </span>
+                                <button
+                                  onClick={() => deletePageAt(idx)}
+                                  className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10"
+                                >
+                                  <Icon name="Trash2" className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+
+                            <div
+                              onClick={() => openPageStudio(idx, 'crop')}
+                              className="relative aspect-[3/4] bg-slate-950 flex items-center justify-center p-2 cursor-pointer overflow-hidden"
+                            >
+                              <img
+                                src={page.processedDataUrl}
+                                alt={`Trang ${idx + 1}`}
+                                className="max-w-full max-h-full object-contain rounded shadow-md transition-transform duration-200 group-hover:scale-[1.02]"
+                              />
+                              <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between gap-1 pointer-events-none">
+                                <span className="px-1.5 py-0.5 rounded bg-slate-950/85 border border-slate-700/80 text-[10px] text-emerald-300 font-semibold">
+                                  {filterLabelMap[page.filterMode]}
+                                </span>
+                                <span className="px-1.5 py-0.5 rounded bg-slate-950/85 border border-slate-700/80 text-[10px] text-amber-300 font-semibold">
+                                  {page.isAutoCropped ? '⚡ Đã cắt biên' : '✂️ Đã căn góc'}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="p-2 bg-slate-950/80 border-t border-slate-800/80 space-y-1.5">
+                              <div className="grid grid-cols-3 gap-1">
+                                <button
+                                  onClick={() => openPageStudio(idx, 'crop')}
+                                  className="py-1.5 px-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-300 text-[11px] font-bold flex items-center justify-center gap-1"
+                                >
+                                  <Icon name="Crop" className="w-3 h-3" />
+                                  <span>Cắt 4 góc</span>
+                                </button>
+                                <button
+                                  onClick={() => openPageStudio(idx, 'rotate')}
+                                  className="py-1.5 px-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold flex items-center justify-center gap-1"
+                                >
+                                  <Icon name="RotateCw" className="w-3 h-3 text-sky-400" />
+                                  <span>Xoay</span>
+                                </button>
+                                <button
+                                  onClick={() => openPageStudio(idx, 'filter')}
+                                  className="py-1.5 px-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold flex items-center justify-center gap-1"
+                                >
+                                  <Icon name="Sparkles" className="w-3 h-3 text-emerald-400" />
+                                  <span>Làm rõ</span>
+                                </button>
+                              </div>
+
+                              <div className="flex items-center justify-between gap-1 pt-0.5">
+                                <button
+                                  disabled={idx === 0}
+                                  onClick={() => movePageOrder(idx, idx - 1)}
+                                  className="flex-1 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 disabled:opacity-30 text-slate-300 text-[11px] font-semibold flex items-center justify-center gap-0.5"
+                                >
+                                  <Icon name="ChevronLeft" className="w-3.5 h-3.5" />
+                                  <span>Lùi</span>
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    setInsertAfterIndex(idx);
+                                    galleryInputRef.current?.click();
+                                  }}
+                                  className="flex-1 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-sky-300 text-[11px] font-semibold flex items-center justify-center gap-0.5"
+                                >
+                                  <Icon name="Plus" className="w-3 h-3" />
+                                  <span>Chèn</span>
+                                </button>
+
+                                <button
+                                  disabled={idx === pages.length - 1}
+                                  onClick={() => movePageOrder(idx, idx + 1)}
+                                  className="flex-1 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 disabled:opacity-30 text-slate-300 text-[11px] font-semibold flex items-center justify-center gap-0.5"
+                                >
+                                  <span>Tiến</span>
+                                  <Icon name="ChevronRight" className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </section>
+                  </>
+                ) : (
+                  <section className="bg-slate-900/60 border border-dashed border-slate-800 rounded-3xl p-8 text-center space-y-4">
+                    <div className="w-16 h-16 rounded-3xl bg-blue-600/15 border border-blue-500/30 flex items-center justify-center mx-auto">
+                      <Icon name="Scissors" className="w-8 h-8 text-[#007AFF]" />
+                    </div>
+                    <div className="max-w-md mx-auto space-y-1.5">
+                      <h3 className="text-base font-bold text-white">
+                        Chưa có trang sách nào trên bàn quét
+                      </h3>
+                      <p className="text-xs text-slate-400 leading-relaxed">
+                        Hãy chọn nhiều ảnh chụp trang sách từ Thư viện iPhone hoặc bấm{' '}
+                        <strong className="text-amber-300">“Nạp 2 Trang Sách Mẫu”</strong> bên dưới để
+                        trải nghiệm ngay thuật toán <strong>Auto-Crop</strong>,{' '}
+                        <strong>Nắn phẳng 4 góc có kính lúp 3x</strong> và{' '}
+                        <strong>Khử bóng gáy sách Magic Color</strong>!
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
+                      <button
+                        onClick={handleLoadDemoPages}
+                        className="px-4 py-2.5 rounded-2xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs sm:text-sm font-bold flex items-center gap-2 transition active:scale-95"
+                      >
+                        <Icon name="Sparkles" className="w-4 h-4" />
+                        <span>Nạp 2 Trang Sách Mẫu (Test Ngay)</span>
+                      </button>
+                    </div>
+                  </section>
+                )}
+              </>
+            ) : (
+              /* TAB 2: TỦ SÁCH PDF TRONG APP */
+              <section className="space-y-3">
+                <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-4 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+                      <Icon name="FolderArchive" className="w-5 h-5 text-[#007AFF]" />
+                      <span>Tủ Sách PDF Đã Lưu Trong App (IndexedDB)</span>
+                    </h2>
+                    <p className="text-xs text-slate-400">
+                      Lưu trữ bền vững trên iPhone • Mở đọc ngay trong App, Đổi tên hoặc Chia sẻ lại qua iOS Share Sheet
+                    </p>
+                  </div>
+                  <span className="px-3 py-1 rounded-full bg-blue-500/20 text-blue-300 text-xs font-bold">
+                    {savedPdfs.length} file
+                  </span>
+                </div>
+
+                {savedPdfs.length === 0 ? (
+                  <div className="bg-slate-900/60 border border-dashed border-slate-800 rounded-3xl p-10 text-center space-y-3">
+                    <Icon name="FolderArchive" className="w-12 h-12 text-slate-600 mx-auto" />
+                    <p className="text-sm font-bold text-slate-300">Tủ sách PDF trong App đang trống</p>
+                    <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                      Sau khi quét và bấm “Tạo & Lưu PDF”, hãy chọn nút “💾 Lưu vào Tủ sách trong App” để đọc lại tài liệu bất cứ lúc nào ngay cả khi không có mạng.
+                    </p>
+                    <button
+                      onClick={() => setActiveTab('scanner')}
+                      className="px-4 py-2 rounded-xl bg-[#007AFF] text-white text-xs font-bold"
+                    >
+                      Quay lại Bàn Quét Sách
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {savedPdfs.map((item) => (
+                      <div
+                        key={item.id}
+                        className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex gap-3.5 shadow-lg"
+                      >
+                        <div
+                          onClick={() => {
+                            setReadingPdf(item);
+                            setReaderZoom(100);
+                          }}
+                          className="w-20 h-28 rounded-xl bg-slate-950 border border-slate-800 overflow-hidden shrink-0 flex items-center justify-center cursor-pointer relative group"
+                        >
+                          {item.coverThumbnail ? (
+                            <img
+                              src={item.coverThumbnail}
+                              alt={item.fileName}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <Icon name="FileText" className="w-8 h-8 text-slate-600" />
+                          )}
+                          <div className="absolute inset-0 bg-slate-950/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
+                            <Icon name="Eye" className="w-5 h-5 text-white" />
+                          </div>
+                        </div>
+
+                        <div className="flex-1 min-w-0 flex flex-col justify-between">
+                          <div>
+                            {renamingPdfId === item.id ? (
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="text"
+                                  value={renameValue}
+                                  onChange={(e) => setRenameValue(e.target.value)}
+                                  className="w-full px-2.5 py-1 rounded-lg bg-slate-950 border border-blue-500 text-xs text-white focus:outline-none"
+                                  autoFocus
+                                />
+                                <button
+                                  onClick={async () => {
+                                    await renameSavedPdfInLibrary(item.id, renameValue);
+                                    setSavedPdfs(await getAllSavedPdfs());
+                                    setRenamingPdfId(null);
+                                    showToast('Đã đổi tên file PDF!');
+                                  }}
+                                  className="p-1.5 rounded-lg bg-emerald-600 text-white"
+                                >
+                                  <Icon name="Check" className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => setRenamingPdfId(null)}
+                                  className="p-1.5 rounded-lg bg-slate-800 text-slate-300"
+                                >
+                                  <Icon name="X" className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ) : (
+                              <h3
+                                onClick={() => {
+                                  setReadingPdf(item);
+                                  setReaderZoom(100);
+                                }}
+                                className="text-sm font-bold text-white truncate cursor-pointer hover:text-sky-400"
+                              >
+                                {item.fileName}
+                              </h3>
+                            )}
+
+                            <div className="flex flex-wrap items-center gap-2 mt-1 text-[11px] text-slate-400">
+                              <span className="text-sky-300 font-semibold">{item.pageCount} trang</span>
+                              <span>•</span>
+                              <span>{formatBytes(item.fileSizeBytes)}</span>
+                              <span>•</span>
+                              <span>{new Date(item.createdAt).toLocaleDateString('vi-VN')}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-1.5 pt-2">
+                            <button
+                              onClick={() => {
+                                setReadingPdf(item);
+                                setReaderZoom(100);
+                              }}
+                              className="px-2.5 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-300 text-xs font-bold flex items-center gap-1"
+                            >
+                              <Icon name="Eye" className="w-3.5 h-3.5" />
+                              <span>Đọc PDF</span>
+                            </button>
+
+                            <button
+                              onClick={async () => {
+                                const blob = base64ToBlob(item.pdfBase64);
+                                const res = await sharePdfViaIOSShareSheet(blob, item.fileName);
+                                showToast(res.message);
+                              }}
+                              className="px-2.5 py-1.5 rounded-lg bg-[#007AFF] hover:bg-blue-600 text-white text-xs font-bold flex items-center gap-1"
+                            >
+                              <Icon name="Share2" className="w-3.5 h-3.5" />
+                              <span>Chia sẻ iOS</span>
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                const blob = base64ToBlob(item.pdfBase64);
+                                triggerDirectDownloadPdf(blob, item.fileName);
+                                showToast(`Đang tải ${item.fileName}`);
+                              }}
+                              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200"
+                            >
+                              <Icon name="Download" className="w-3.5 h-3.5" />
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                setRenamingPdfId(item.id);
+                                setRenameValue(item.fileName.replace(/\.pdf$/i, ''));
+                              }}
+                              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200"
+                            >
+                              <Icon name="Pencil" className="w-3.5 h-3.5" />
+                            </button>
+
+                            <button
+                              onClick={async () => {
+                                if (window.confirm(`Xóa file "${item.fileName}" khỏi Tủ sách?`)) {
+                                  await deleteSavedPdfFromLibrary(item.id);
+                                  setSavedPdfs(await getAllSavedPdfs());
+                                  showToast('Đã xóa file PDF.');
+                                }
+                              }}
+                              className="p-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300"
+                            >
+                              <Icon name="Trash2" className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+          </main>
+
+          {/* PAGE STUDIO MODAL (MODULE 2, 3, 4) */}
+          {editingPageIndex !== null && pages[editingPageIndex] && (
+            <div className="fixed inset-0 z-50 bg-[#060911] flex flex-col">
+              <div
+                className="px-3 py-2.5 bg-slate-900/95 border-b border-slate-800 flex items-center justify-between gap-2"
+                style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
+              >
+                <button
+                  onClick={() => setEditingPageIndex(null)}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold flex items-center gap-1"
+                >
+                  <Icon name="X" className="w-4 h-4" />
+                  <span>Đóng</span>
+                </button>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    disabled={editingPageIndex === 0}
+                    onClick={() => saveCurrentPageStudio(editingPageIndex - 1)}
+                    className="p-1.5 rounded-lg bg-slate-800 disabled:opacity-30 text-slate-200"
+                  >
+                    <Icon name="ChevronLeft" className="w-4 h-4" />
+                  </button>
+                  <span className="text-xs sm:text-sm font-extrabold text-white px-2">
+                    Trang {editingPageIndex + 1} / {pages.length}
+                  </span>
+                  <button
+                    disabled={editingPageIndex === pages.length - 1}
+                    onClick={() => saveCurrentPageStudio(editingPageIndex + 1)}
+                    className="p-1.5 rounded-lg bg-slate-800 disabled:opacity-30 text-slate-200"
+                  >
+                    <Icon name="ChevronRight" className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => saveCurrentPageStudio(null)}
+                  className="px-3.5 py-1.5 rounded-xl bg-[#007AFF] hover:bg-blue-600 text-white text-xs font-extrabold flex items-center gap-1 shadow-lg shadow-blue-600/30"
+                >
+                  <Icon name="Check" className="w-4 h-4" />
+                  <span>Lưu trang</span>
+                </button>
+              </div>
+
+              <div className="flex-1 relative bg-slate-950 flex items-center justify-center p-4 overflow-hidden">
+                {studioTab === 'crop' ? (
+                  <div
+                    ref={cropStageRef}
+                    onPointerMove={handleCropPointerMove}
+                    onPointerUp={handleStopCropDrag}
+                    onPointerCancel={handleStopCropDrag}
+                    className="relative inline-block max-w-full max-h-[54vh] select-none touch-none"
+                  >
+                    <img
+                      src={pages[editingPageIndex].originalDataUrl}
+                      alt="Ảnh gốc cần cắt"
+                      className="max-w-full max-h-[54vh] w-auto h-auto block rounded pointer-events-none"
+                    />
+
+                    <svg
+                      className="absolute inset-0 w-full h-full pointer-events-none"
+                      viewBox="0 0 100 100"
+                      preserveAspectRatio="none"
+                    >
+                      <defs>
+                        <mask id="cropHoleMask">
+                          <rect x="0" y="0" width="100" height="100" fill="white" />
+                          <polygon
+                            points={`${draftQuad.tl.x * 100},${draftQuad.tl.y * 100} ${
+                              draftQuad.tr.x * 100
+                            },${draftQuad.tr.y * 100} ${draftQuad.br.x * 100},${
+                              draftQuad.br.y * 100
+                            } ${draftQuad.bl.x * 100},${draftQuad.bl.y * 100}`}
+                            fill="black"
+                          />
+                        </mask>
+                      </defs>
+                      <rect
+                        x="0"
+                        y="0"
+                        width="100"
+                        height="100"
+                        fill="rgba(2, 6, 23, 0.65)"
+                        mask="url(#cropHoleMask)"
+                      />
+                      <polygon
+                        points={`${draftQuad.tl.x * 100},${draftQuad.tl.y * 100} ${
+                          draftQuad.tr.x * 100
+                        },${draftQuad.tr.y * 100} ${draftQuad.br.x * 100},${
+                          draftQuad.br.y * 100
+                        } ${draftQuad.bl.x * 100},${draftQuad.bl.y * 100}`}
+                        fill="rgba(0, 122, 255, 0.10)"
+                        stroke="#22d3ee"
+                        strokeWidth="0.9"
+                      />
+                    </svg>
+
+                    {[
+                      { key: 'tl', pt: draftQuad.tl },
+                      { key: 'tr', pt: draftQuad.tr },
+                      { key: 'br', pt: draftQuad.br },
+                      { key: 'bl', pt: draftQuad.bl }
+                    ].map((hItem) => (
+                      <div
+                        key={hItem.key}
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          e.target.setPointerCapture(e.pointerId);
+                          setActiveHandle(hItem.key);
+                          setLoupePoint(hItem.pt);
+                        }}
+                        style={{ left: `${hItem.pt.x * 100}%`, top: `${hItem.pt.y * 100}%` }}
+                        className="absolute -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-[#007AFF]/90 border-2 border-white shadow-xl flex items-center justify-center cursor-grab active:cursor-grabbing"
+                      >
+                        <div className="w-2 h-2 rounded-full bg-cyan-300" />
+                      </div>
+                    ))}
+
+                    {[
+                      {
+                        key: 'top',
+                        pt: {
+                          x: (draftQuad.tl.x + draftQuad.tr.x) / 2,
+                          y: (draftQuad.tl.y + draftQuad.tr.y) / 2
+                        }
+                      },
+                      {
+                        key: 'bottom',
+                        pt: {
+                          x: (draftQuad.bl.x + draftQuad.br.x) / 2,
+                          y: (draftQuad.bl.y + draftQuad.br.y) / 2
+                        }
+                      },
+                      {
+                        key: 'left',
+                        pt: {
+                          x: (draftQuad.tl.x + draftQuad.bl.x) / 2,
+                          y: (draftQuad.tl.y + draftQuad.bl.y) / 2
+                        }
+                      },
+                      {
+                        key: 'right',
+                        pt: {
+                          x: (draftQuad.tr.x + draftQuad.br.x) / 2,
+                          y: (draftQuad.tr.y + draftQuad.br.y) / 2
+                        }
+                      }
+                    ].map((edgeItem) => (
+                      <div
+                        key={edgeItem.key}
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          e.target.setPointerCapture(e.pointerId);
+                          setActiveHandle(edgeItem.key);
+                          setLoupePoint(edgeItem.pt);
+                        }}
+                        style={{ left: `${edgeItem.pt.x * 100}%`, top: `${edgeItem.pt.y * 100}%` }}
+                        className="absolute -translate-x-1/2 -translate-y-1/2 w-6 h-6 rounded-lg bg-slate-900/90 border border-cyan-400 shadow flex items-center justify-center cursor-pointer"
+                      >
+                        <div className="w-2.5 h-1 rounded-full bg-cyan-300" />
+                      </div>
+                    ))}
+
+                    {loupePoint && (
+                      <div
+                        style={{
+                          left: loupePoint.x > 0.5 ? '12px' : 'auto',
+                          right: loupePoint.x <= 0.5 ? '12px' : 'auto',
+                          top: '12px'
+                        }}
+                        className="absolute z-30 rounded-full overflow-hidden shadow-2xl border-2 border-cyan-400 bg-slate-950 pointer-events-none"
+                      >
+                        <canvas ref={loupeCanvasRef} width={120} height={120} className="block" />
+                        <div className="bg-slate-950/90 text-[10px] font-bold text-cyan-300 text-center py-0.5">
+                          Kính lúp 3x
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="relative inline-block max-w-full max-h-[54vh]">
+                    <img
+                      src={studioPreviewUrl || pages[editingPageIndex].processedDataUrl}
+                      alt="Xem trước"
+                      className="max-w-full max-h-[54vh] object-contain rounded shadow-2xl border border-slate-800"
+                    />
+                    {studioTab === 'rotate' && (
+                      <div className="absolute inset-0 pointer-events-none grid grid-cols-3 grid-rows-6 border border-cyan-400/40">
+                        {Array.from({ length: 18 }).map((_, i) => (
+                          <div key={i} className="border border-cyan-400/20" />
+                        ))}
+                      </div>
+                    )}
+                    {isUpdatingPreview && (
+                      <div className="absolute top-2 right-2 px-2.5 py-1 rounded-full bg-slate-950/85 border border-slate-700 text-[11px] text-sky-300 flex items-center gap-1.5">
+                        <Icon name="RefreshCw" className="w-3 h-3 animate-spin" />
+                        <span>Đang xử lý...</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div
+                className="bg-slate-900 border-t border-slate-800 px-4 pt-3 space-y-3"
+                style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+              >
+                <div className="grid grid-cols-3 gap-1.5 bg-slate-950 p-1 rounded-2xl border border-slate-800 max-w-lg mx-auto">
+                  <button
+                    onClick={() => setStudioTab('crop')}
+                    className={`py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition ${
+                      studioTab === 'crop'
+                        ? 'bg-[#007AFF] text-white shadow'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Icon name="Crop" className="w-3.5 h-3.5" />
+                    <span>1. Cắt & 4 Góc</span>
+                  </button>
+                  <button
+                    onClick={() => setStudioTab('rotate')}
+                    className={`py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition ${
+                      studioTab === 'rotate'
+                        ? 'bg-[#007AFF] text-white shadow'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Icon name="RotateCw" className="w-3.5 h-3.5" />
+                    <span>2. Xoay & Khổ</span>
+                  </button>
+                  <button
+                    onClick={() => setStudioTab('filter')}
+                    className={`py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition ${
+                      studioTab === 'filter'
+                        ? 'bg-[#007AFF] text-white shadow'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Icon name="Sparkles" className="w-3.5 h-3.5" />
+                    <span>3. Làm Rõ Chữ</span>
+                  </button>
+                </div>
+
+                <div className="max-w-xl mx-auto">
+                  {studioTab === 'crop' && (
+                    <div className="space-y-2.5">
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => setDraftCropMode('quad')}
+                          className={`py-2 px-3 rounded-xl text-xs font-bold border flex items-center justify-center gap-1.5 ${
+                            draftCropMode === 'quad'
+                              ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300'
+                              : 'bg-slate-800 border-slate-700 text-slate-300'
+                          }`}
+                        >
+                          <Icon name="Maximize2" className="w-3.5 h-3.5" />
+                          <span>Khung 4 Điểm Tự Do (Nắn phẳng)</span>
+                        </button>
+                        <button
+                          onClick={switchToRectangleCropMode}
+                          className={`py-2 px-3 rounded-xl text-xs font-bold border flex items-center justify-center gap-1.5 ${
+                            draftCropMode === 'rect'
+                              ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300'
+                              : 'bg-slate-800 border-slate-700 text-slate-300'
+                          }`}
+                        >
+                          <Icon name="Grid" className="w-3.5 h-3.5" />
+                          <span>Khung Chữ Nhật Nhanh</span>
+                        </button>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <button
+                          onClick={() => {
+                            if (editingSourceImgRef.current) {
+                              const detected = detectDocumentCorners(editingSourceImgRef.current);
+                              setDraftQuad(detected);
+                              showToast('⚡ Đã tự động bắt biên 4 mép trang giấy!');
+                            }
+                          }}
+                          className="flex-1 py-2 px-3 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-bold flex items-center justify-center gap-1.5"
+                        >
+                          <Icon name="Wand2" className="w-3.5 h-3.5" />
+                          <span>⚡ Tự Động Bắt Biên</span>
+                        </button>
+                        <button
+                          onClick={() => setDraftQuad(getDefaultFullQuad())}
+                          className="py-2 px-3 rounded-xl bg-slate-800 border border-slate-700 text-slate-300 text-xs font-semibold"
+                        >
+                          Chọn Toàn Ảnh
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {studioTab === 'rotate' && (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-4 gap-1.5">
+                        <button
+                          onClick={() => setDraftRotation90((prev) => (prev + 270) % 360)}
+                          className="py-2 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex flex-col items-center gap-1"
+                        >
+                          <Icon name="RotateCcw" className="w-4 h-4 text-sky-400" />
+                          <span>Trái -90°</span>
+                        </button>
+                        <button
+                          onClick={() => setDraftRotation90((prev) => (prev + 90) % 360)}
+                          className="py-2 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex flex-col items-center gap-1"
+                        >
+                          <Icon name="RotateCw" className="w-4 h-4 text-sky-400" />
+                          <span>Phải +90°</span>
+                        </button>
+                        <button
+                          onClick={() => setDraftRotation90((prev) => (prev + 180) % 360)}
+                          className="py-2 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex flex-col items-center gap-1"
+                        >
+                          <Icon name="FlipHorizontal" className="w-4 h-4 text-amber-400" />
+                          <span>Lật 180°</span>
+                        </button>
+                        <button
+                          onClick={handleBatchRotateAll}
+                          className="py-2 px-2 rounded-xl bg-blue-600/20 border border-blue-500/30 text-blue-300 text-xs font-bold flex flex-col items-center gap-1"
+                        >
+                          <Icon name="RefreshCw" className="w-4 h-4" />
+                          <span>Xoay tất cả</span>
+                        </button>
+                      </div>
+
+                      <div className="bg-slate-950 p-2.5 rounded-2xl border border-slate-800 space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-slate-300 font-semibold">
+                            Thanh trượt Xoay Vi Chỉnh (-15° đến +15°):
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-cyan-400 font-bold">{draftFineAngle.toFixed(1)}°</span>
+                            {draftFineAngle !== 0 && (
+                              <button
+                                onClick={() => setDraftFineAngle(0)}
+                                className="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300"
+                              >
+                                Về 0°
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <input
+                          type="range"
+                          min={-15}
+                          max={15}
+                          step={0.5}
+                          value={draftFineAngle}
+                          onChange={(e) => setDraftFineAngle(parseFloat(e.target.value))}
+                          className="w-full accent-[#007AFF]"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {[
+                          { id: 'auto', label: 'Tự khớp (Auto-Fit)' },
+                          { id: 'portrait', label: 'Dọc (Portrait)' },
+                          { id: 'landscape', label: 'Ngang (Landscape)' }
+                        ].map((oItem) => (
+                          <button
+                            key={oItem.id}
+                            onClick={() => setDraftOrientation(oItem.id)}
+                            className={`py-2 px-2 rounded-xl text-xs font-bold border ${
+                              draftOrientation === oItem.id
+                                ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+                                : 'bg-slate-800 border-slate-700 text-slate-300'
+                            }`}
+                          >
+                            {oItem.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {studioTab === 'filter' && (
+                    <div className="space-y-2.5">
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {[
+                          { id: 'magic_color', label: '✨ Sáng Rõ (Magic)' },
+                          { id: 'bw_sharp', label: '🖨️ Trắng Đen' },
+                          { id: 'grayscale', label: '👁️ Thang Xám' },
+                          { id: 'original', label: '🖼️ Bản Gốc' }
+                        ].map((fItem) => (
+                          <button
+                            key={fItem.id}
+                            onClick={() => setDraftFilterMode(fItem.id)}
+                            className={`py-2 px-1.5 rounded-xl text-[11px] font-bold border text-center ${
+                              draftFilterMode === fItem.id
+                                ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300'
+                                : 'bg-slate-800 border-slate-700 text-slate-300'
+                            }`}
+                          >
+                            {fItem.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 bg-slate-950 p-2.5 rounded-2xl border border-slate-800">
+                        <div>
+                          <div className="flex justify-between text-[11px] mb-1">
+                            <span className="text-slate-400 flex items-center gap-1">
+                              <Icon name="Sun" className="w-3 h-3 text-amber-400" /> Độ sáng giấy
+                            </span>
+                            <span className="text-white font-bold">{draftBrightness}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min={20}
+                            max={100}
+                            value={draftBrightness}
+                            onChange={(e) => setDraftBrightness(parseInt(e.target.value, 10))}
+                            className="w-full accent-[#007AFF]"
+                          />
+                        </div>
+
+                        <div>
+                          <div className="flex justify-between text-[11px] mb-1">
+                            <span className="text-slate-400 flex items-center gap-1">
+                              <Icon name="Sliders" className="w-3 h-3 text-cyan-400" /> Độ đậm chữ
+                            </span>
+                            <span className="text-white font-bold">{draftContrast}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min={20}
+                            max={100}
+                            value={draftContrast}
+                            onChange={(e) => setDraftContrast(parseInt(e.target.value, 10))}
+                            className="w-full accent-[#007AFF]"
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() =>
+                          handleBatchApplyFilterAll(draftFilterMode, draftBrightness, draftContrast)
+                        }
+                        className="w-full py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 text-xs font-bold"
+                      >
+                        ✨ Áp dụng bộ lọc này cho tất cả các trang ({pages.length} trang)
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MODAL XUẤT & LƯU PDF CHUẨN iOS (MODULE 5) */}
+          {showExportModal && (
+            <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4">
+              <div
+                className="bg-slate-900 border-t sm:border border-slate-800 rounded-t-3xl sm:rounded-3xl max-w-lg w-full p-5 space-y-4 shadow-2xl max-h-[92vh] overflow-y-auto"
+                style={{ paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom))' }}
+              >
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+                    <Icon name="FileCheck" className="w-5 h-5 text-[#007AFF]" />
+                    <span>Đóng Gói & Lưu File PDF Chuẩn iOS</span>
+                  </h3>
+                  <button
+                    onClick={() => setShowExportModal(false)}
+                    className="p-1.5 rounded-full bg-slate-800 text-slate-400 hover:text-white"
+                  >
+                    <Icon name="X" className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-300 block">
+                    1. Đặt tên file PDF học tập:
+                  </label>
+                  <div className="flex items-center bg-slate-950 border border-slate-700 focus-within:border-[#007AFF] rounded-2xl px-3.5 py-2.5">
+                    <input
+                      type="text"
+                      value={pdfFileName}
+                      onChange={(e) => {
+                        setPdfFileName(e.target.value);
+                        setGeneratedPkg(null);
+                      }}
+                      placeholder="Nhập tên tài liệu (ví dụ: Bai_1_Tim_Mach)"
+                      className="bg-transparent text-sm font-bold text-white w-full focus:outline-none"
+                    />
+                    <span className="text-xs font-bold text-slate-400 pl-2">.pdf</span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {[
+                      { label: '+ Ngày hôm nay', val: '_28_10_2026' },
+                      { label: 'Giao_Trinh_', prefix: true },
+                      { label: 'Bai_Giang_', prefix: true },
+                      { label: 'De_Cuong_On_Thi_', prefix: true }
+                    ].map((chip, i) => (
+                      <button
+                        key={i}
+                        onClick={() => {
+                          setGeneratedPkg(null);
+                          if (chip.prefix) setPdfFileName((prev) => `${chip.label}${prev}`);
+                          else if (chip.val) setPdfFileName((prev) => `${prev}${chip.val}`);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] text-sky-300 font-semibold"
+                      >
+                        {chip.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-300 block">
+                    2. Khổ giấy & Chiều trang PDF:
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => {
+                        setPdfLayout('fit');
+                        setGeneratedPkg(null);
+                      }}
+                      className={`p-3 rounded-2xl border text-left transition ${
+                        pdfLayout === 'fit'
+                          ? 'bg-blue-600/20 border-[#007AFF] text-white'
+                          : 'bg-slate-950 border-slate-800 text-slate-400'
+                      }`}
+                    >
+                      <div className="text-xs font-bold text-white">Vừa khít ảnh đã cắt</div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">
+                        Fit to Image • Không viền trắng thừa
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setPdfLayout('a4');
+                        setGeneratedPkg(null);
+                      }}
+                      className={`p-3 rounded-2xl border text-left transition ${
+                        pdfLayout === 'a4'
+                          ? 'bg-blue-600/20 border-[#007AFF] text-white'
+                          : 'bg-slate-950 border-slate-800 text-slate-400'
+                      }`}
+                    >
+                      <div className="text-xs font-bold text-white">Chuẩn khổ A4</div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">
+                        210×297mm • Có căn lề in ấn
+                      </div>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-1.5 pt-1">
+                    {[
+                      { id: 'auto', label: 'Tự khớp Dọc/Ngang' },
+                      { id: 'portrait', label: 'Tất cả Dọc' },
+                      { id: 'landscape', label: 'Tất cả Ngang' }
+                    ].map((o) => (
+                      <button
+                        key={o.id}
+                        onClick={() => {
+                          setPdfOrientation(o.id);
+                          setGeneratedPkg(null);
+                        }}
+                        className={`py-2 px-2 rounded-xl text-xs font-bold border ${
+                          pdfOrientation === o.id
+                            ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+                            : 'bg-slate-950 border-slate-800 text-slate-400'
+                        }`}
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-300 block">
+                    3. Chất lượng & Dung lượng file PDF:
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { id: 'hd', title: 'Siêu nét', desc: 'HD Print (2200px)' },
+                      { id: 'standard', title: 'Tiêu chuẩn', desc: 'Cân bằng (1750px)' },
+                      { id: 'light', title: 'Nhẹ', desc: 'Gửi Zalo nhanh' }
+                    ].map((q) => (
+                      <button
+                        key={q.id}
+                        onClick={() => {
+                          setPdfQuality(q.id);
+                          setGeneratedPkg(null);
+                        }}
+                        className={`p-2.5 rounded-2xl border text-center ${
+                          pdfQuality === q.id
+                            ? 'bg-blue-600/20 border-[#007AFF] text-white'
+                            : 'bg-slate-950 border-slate-800 text-slate-400'
+                        }`}
+                      >
+                        <div className="text-xs font-bold text-white">{q.title}</div>
+                        <div className="text-[10px] text-slate-400">{q.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {!generatedPkg ? (
+                  <button
+                    onClick={handleBuildPdfPackage}
+                    className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-[#007AFF] to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-extrabold text-sm shadow-xl shadow-blue-600/30 flex items-center justify-center gap-2 transition active:scale-95"
+                  >
+                    <Icon name="Sparkles" className="w-5 h-5" />
+                    <span>Kết Xuất File PDF Ngay ({pages.length} trang)</span>
+                  </button>
+                ) : (
+                  <div className="bg-slate-950 border border-emerald-500/40 rounded-2xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                          <Icon name="Check" className="w-4 h-4" />
+                          <span>Đã đóng gói PDF thành công!</span>
+                        </div>
+                        <div className="text-sm font-extrabold text-white truncate max-w-[260px]">
+                          {generatedPkg.fileName}
+                        </div>
+                      </div>
+                      <div className="text-right text-xs text-slate-400">
+                        <div className="font-bold text-sky-300">
+                          {formatBytes(generatedPkg.fileSizeBytes)}
+                        </div>
+                        <div>{generatedPkg.pageCount} trang</div>
+                      </div>
+                    </div>
+
+                    {/* 3 NÚT HÀNH ĐỘNG ĐẶC BIỆT CHO iPHONE */}
+                    <div className="space-y-2 pt-1">
+                      <button
+                        onClick={handleIOSShareGeneratedPdf}
+                        className="w-full py-3.5 px-4 rounded-2xl bg-[#007AFF] hover:bg-blue-600 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2 transition active:scale-95"
+                      >
+                        <Icon name="Share2" className="w-4 h-4 shrink-0" />
+                        <span>📲 Lưu vào Tệp / Chia sẻ (iOS Share Sheet)</span>
+                      </button>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={handleDirectDownloadGeneratedPdf}
+                          className="py-3 px-3 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition active:scale-95"
+                        >
+                          <Icon name="Download" className="w-4 h-4 text-sky-400 shrink-0" />
+                          <span>⬇️ Tải xuống trực tiếp</span>
+                        </button>
+
+                        <button
+                          disabled={isSavedToAppLib}
+                          onClick={handleSaveToAppLibrary}
+                          className={`py-3 px-3 rounded-2xl font-bold text-xs flex items-center justify-center gap-1.5 border transition active:scale-95 ${
+                            isSavedToAppLib
+                              ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+                              : 'bg-emerald-600 hover:bg-emerald-500 border-emerald-500 text-white'
+                          }`}
+                        >
+                          <Icon name="FolderArchive" className="w-4 h-4 shrink-0" />
+                          <span>
+                            {isSavedToAppLib ? '✓ Đã lưu vào Tủ sách' : '💾 Lưu vào Tủ sách App'}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TRÌNH ĐỌC PDF MINI NGAY TRONG APP */}
+          {readingPdf && (
+            <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col">
+              <div
+                className="px-4 py-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between gap-2"
+                style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
+              >
+                <button
+                  onClick={() => setReadingPdf(null)}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-200 text-xs font-bold flex items-center gap-1"
+                >
+                  <Icon name="ChevronLeft" className="w-4 h-4" />
+                  <span>Tủ sách</span>
+                </button>
+
+                <div className="text-center min-w-0 flex-1">
+                  <div className="text-xs sm:text-sm font-extrabold text-white truncate">
+                    {readingPdf.fileName}
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    {readingPdf.pageCount} trang • {formatBytes(readingPdf.fileSizeBytes)}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setReaderZoom((z) => (z >= 150 ? 100 : z + 25))}
+                    className="px-2.5 py-1.5 rounded-xl bg-slate-800 text-sky-300 text-xs font-bold flex items-center gap-1"
+                  >
+                    <Icon name="ZoomIn" className="w-3.5 h-3.5" />
+                    <span>{readerZoom}%</span>
+                  </button>
+                  <button
+                    onClick={async () => {
+                      const blob = base64ToBlob(readingPdf.pdfBase64);
+                      const res = await sharePdfViaIOSShareSheet(blob, readingPdf.fileName);
+                      showToast(res.message);
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-[#007AFF] text-white text-xs font-bold flex items-center gap-1"
+                  >
+                    <Icon name="Share2" className="w-3.5 h-3.5" />
+                    <span>Chia sẻ</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 flex flex-col items-center">
+                {readingPdf.pageImages && readingPdf.pageImages.length > 0 ? (
+                  readingPdf.pageImages.map((imgUrl, idx) => (
+                    <div
+                      key={idx}
+                      style={{ width: `${Math.min(100, readerZoom)}%` }}
+                      className="max-w-3xl bg-slate-900 border border-slate-800 rounded-2xl p-2 shadow-2xl space-y-2"
+                    >
+                      <div className="flex justify-between items-center px-2 text-xs text-slate-400">
+                        <span className="font-bold text-white">
+                          Trang {idx + 1} / {readingPdf.pageCount}
+                        </span>
+                        <span>DocScan Study Reader</span>
+                      </div>
+                      <img
+                        src={imgUrl}
+                        alt={`Trang ${idx + 1}`}
+                        className="w-full h-auto rounded-lg bg-white"
+                      />
+                    </div>
+                  ))
+                ) : (
+                  <iframe
+                    src={readingPdf.pdfBase64}
+                    title={readingPdf.fileName}
+                    className="w-full h-full rounded-xl bg-white"
+                  />
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* LIVE CAMERA MODAL */}
+          {showLiveCamera && (
+            <div className="fixed inset-0 z-50 bg-black flex flex-col">
+              <div
+                className="px-4 py-3 bg-slate-950/80 flex items-center justify-between"
+                style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
+              >
+                <button
+                  onClick={closeLiveCameraModal}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 text-white text-xs font-bold"
+                >
+                  Đóng Camera
+                </button>
+                <span className="text-xs font-bold text-cyan-300">
+                  Đã quét: {pages.length} trang
+                </span>
+              </div>
+
+              <div className="flex-1 relative flex items-center justify-center overflow-hidden">
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-8 border-2 border-cyan-400/80 rounded-2xl pointer-events-none flex items-center justify-center">
+                  <span className="px-3 py-1 rounded-full bg-slate-950/75 text-cyan-300 text-xs font-semibold">
+                    Đặt trang sách vào trong khung ngắm — Tự động cắt biên
+                  </span>
+                </div>
+              </div>
+
+              <div
+                className="p-5 bg-slate-950 flex items-center justify-center gap-6"
+                style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}
+              >
+                <button
+                  onClick={captureFromLiveCamera}
+                  className="w-16 h-16 rounded-full bg-white border-4 border-[#007AFF] shadow-xl active:scale-90 transition"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* HƯỚNG DẪN CÀI LÊN iPHONE */}
+          {showIOSGuide && (
+            <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-5 space-y-4 shadow-2xl">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+                    <Icon name="Smartphone" className="w-5 h-5 text-[#007AFF]" />
+                    <span>Hướng Dẫn Cài Lên iPhone (Chuẩn Native PWA)</span>
+                  </h3>
+                  <button
+                    onClick={() => setShowIOSGuide(false)}
+                    className="p-1.5 rounded-full bg-slate-800 text-slate-400"
+                  >
+                    <Icon name="X" className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="space-y-3 text-xs text-slate-300 leading-relaxed">
+                  <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 flex items-start gap-3">
+                    <span className="w-6 h-6 rounded-full bg-[#007AFF] text-white font-extrabold flex items-center justify-center shrink-0">
+                      1
+                    </span>
+                    <div>
+                      Mở ứng dụng này bằng trình duyệt <strong>Safari</strong> trên iPhone hoặc iPad.
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 flex items-start gap-3">
+                    <span className="w-6 h-6 rounded-full bg-[#007AFF] text-white font-extrabold flex items-center justify-center shrink-0">
+                      2
+                    </span>
+                    <div>
+                      Bấm vào nút <strong>Chia sẻ (Share)</strong> ở thanh công cụ dưới cùng của Safari.
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 flex items-start gap-3">
+                    <span className="w-6 h-6 rounded-full bg-[#007AFF] text-white font-extrabold flex items-center justify-center shrink-0">
+                      3
+                    </span>
+                    <div>
+                      Cuộn xuống và chọn <strong>“Thêm vào Màn hình chính” (Add to Home Screen)</strong> rồi bấm <strong>Thêm</strong>. Ứng dụng sẽ chạy toàn màn hình mượt mà như App gốc trên iPhone!
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setShowIOSGuide(false)}
+                  className="w-full py-3 rounded-2xl bg-[#007AFF] text-white font-bold text-xs"
+                >
+                  Đã hiểu
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* BOTTOM TAB BAR CHUẨN iOS 18 */}
+          <nav
+            className="fixed bottom-0 left-0 right-0 z-40 bg-[#090d16]/90 backdrop-blur-2xl border-t border-slate-800/90 px-4 pt-2"
+            style={{ paddingBottom: 'max(0.65rem, env(safe-area-inset-bottom))' }}
+          >
+            <div className="max-w-md mx-auto grid grid-cols-2 gap-3">
+              <button
+                onClick={() => setActiveTab('scanner')}
+                className={`py-2 px-4 rounded-2xl flex items-center justify-center gap-2 font-bold text-xs transition ${
+                  activeTab === 'scanner'
+                    ? 'bg-[#007AFF] text-white shadow-lg shadow-blue-600/30'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Icon name="Layers" className="w-4 h-4" />
+                <span>Quét mới (Scanner)</span>
+                {pages.length > 0 && (
+                  <span
+                    className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
+                      activeTab === 'scanner' ? 'bg-white text-[#007AFF]' : 'bg-slate-800 text-sky-400'
+                    }`}
+                  >
+                    {pages.length}
+                  </span>
+                )}
+              </button>
+
+              <button
+                onClick={() => setActiveTab('library')}
+                className={`py-2 px-4 rounded-2xl flex items-center justify-center gap-2 font-bold text-xs transition ${
+                  activeTab === 'library'
+                    ? 'bg-[#007AFF] text-white shadow-lg shadow-blue-600/30'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Icon name="FolderArchive" className="w-4 h-4" />
+                <span>Tủ PDF đã lưu (My PDFs)</span>
+                {savedPdfs.length > 0 && (
+                  <span
+                    className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
+                      activeTab === 'library'
+                        ? 'bg-white text-[#007AFF]'
+                        : 'bg-slate-800 text-emerald-400'
+                    }`}
+                  >
+                    {savedPdfs.length}
+                  </span>
+                )}
+              </button>
+            </div>
+          </nav>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+      });
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "name": "DocScan Study PDF - Quét Sách Chuẩn iOS",
+  "short_name": "DocScan PDF",
+  "description": "Ứng dụng Quét Sách, Tự Động Cắt Biên, Làm Rõ Chữ & Đóng Gói PDF Chuẩn iOS",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#090d16",
+  "theme_color": "#007AFF",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

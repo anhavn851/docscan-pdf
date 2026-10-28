@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="iosBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#007AFF" />
+      <stop offset="50%" stop-color="#2563EB" />
+      <stop offset="100%" stop-color="#1D4ED8" />
+    </linearGradient>
+    <linearGradient id="scanBeam" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0" />
+      <stop offset="50%" stop-color="#38BDF8" stop-opacity="0.45" />
+      <stop offset="100%" stop-color="#22D3EE" stop-opacity="0.9" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="url(#iosBg)" />
+  <!-- Khung ngắm 4 góc Auto-Crop -->
+  <path d="M96 148 V112 A16 16 0 0 1 112 96 H148" stroke="#FFFFFF" stroke-width="18" stroke-linecap="round" fill="none" />
+  <path d="M364 96 H400 A16 16 0 0 1 416 112 V148" stroke="#FFFFFF" stroke-width="18" stroke-linecap="round" fill="none" />
+  <path d="M96 364 V400 A16 16 0 0 0 112 416 H148" stroke="#FFFFFF" stroke-width="18" stroke-linecap="round" fill="none" />
+  <path d="M364 416 H400 A16 16 0 0 0 416 400 V364" stroke="#FFFFFF" stroke-width="18" stroke-linecap="round" fill="none" />
+  <!-- Trang sách -->
+  <rect x="140" y="128" width="232" height="256" rx="22" fill="#FFFFFF" />
+  <rect x="172" y="168" width="120" height="16" rx="8" fill="#007AFF" />
+  <rect x="172" y="204" width="168" height="12" rx="6" fill="#94A3B8" />
+  <rect x="172" y="232" width="152" height="12" rx="6" fill="#FACC15" />
+  <rect x="172" y="260" width="168" height="12" rx="6" fill="#94A3B8" />
+  <!-- Tia quét CV -->
+  <rect x="116" y="240" width="280" height="48" fill="url(#scanBeam)" />
+  <line x1="112" y1="288" x2="400" y2="288" stroke="#22D3EE" stroke-width="8" stroke-linecap="round" />
+  <!-- Badge PDF -->
+  <rect x="252" y="312" width="96" height="44" rx="12" fill="#EF4444" />
+  <text x="300" y="341" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="24" font-weight="800" fill="#FFFFFF" text-anchor="middle">PDF</text>
+</svg>
