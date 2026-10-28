@@ -1,14 +1,16 @@
-const CACHE_NAME = 'docscan-study-pdf-v1';
+const CACHE_NAME = 'docscan-study-pdf-v2';
 const ASSETS = [
   './',
   './index.html',
+  './standalone-engine.js',
   './manifest.json',
   './icon.svg'
 ];
 
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
   );
 });
 
@@ -20,20 +22,16 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+// Chiến lược Network-First: Luôn ưu tiên tải bản mới nhất khi có mạng, chỉ dùng Cache khi Offline
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      return (
-        cached ||
-        fetch(event.request)
-          .then((res) => {
-            const copy = res.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-            return res;
-          })
-          .catch(() => cached)
-      );
-    })
+    fetch(event.request)
+      .then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        return res;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
