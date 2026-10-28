@@ -1,4 +1,4 @@
-const CACHE_NAME = 'docscan-study-pdf-v2';
+const CACHE_NAME = 'docscan-study-pdf-v3';
 const ASSETS = [
   './',
   './index.html',

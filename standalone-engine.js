@@ -108,11 +108,14 @@
   }
 
   /**
-   * MODULE 2.1: Thuật toán Tự Động Cắt Biên Trang Giấy Thông Minh - Bảo Toàn 100% Chữ (Text-Safe Auto-Crop Engine)
-   * 1. Chuẩn hóa ánh sáng cục bộ (Local Paper Background 9x9) để không bị đánh lừa bởi bóng râm ở góc trang.
-   * 2. Dò 4 đường biên trang giấy (Top, Bottom, Left, Right) bằng khớp đường thẳng bền vững (Robust Line Fitting) loại bỏ phần bàn/góc thừa.
-   * 3. Xác định Hộp Giới Hạn Chữ (Text & Ink Bounding Box) bên trong trang giấy và áp dụng Vùng Đệm An Toàn (Safety Padding)
-   *    để đảm bảo khung cắt KHÔNG BAO GIỜ cắt phạm vào bất kỳ chữ cái hay sơ đồ nào trong trang!
+   * MODULE 2.1: Thuật toán Tự Động Bám Sát Viền Trang Sách & Cắt Bỏ Nền Bàn / Trang Bên Cạnh (Inside-Out Book Page & Spine Detector)
+   * 1. Xóa chữ giữ nền bằng Phép Đóng Hình Thái Học (Morphological Closing = Dilation + Erosion 9x9)
+   *    giúp cả trang sách trở thành mặt phẳng đồng nhất, làm nổi bật mép giấy, bìa sách, nền bàn và rãnh gáy sách.
+   * 2. Cô lập Khối Chữ Trang Chính & Phát hiện Rãnh Gáy Sách (Spine / Adjacent Page Separator)
+   *    để tách biệt hoàn toàn trang sách chính ở giữa với phần dư của trang sách bên cạnh.
+   * 3. Quét Từ Trong Ra Ngoài (Inside-Out Edge Locking): Xuất phát từ ngay sát ngoài khối chữ trang chính quét ra 4 phía
+   *    để bắt dính vào ĐƯỜNG BIÊN VẬT LÝ ĐẦU TIÊN (mép trang giấy hoặc rãnh gáy sách), loại bỏ 100% nền bàn, môi trường xung quanh
+   *    và phần dư của trang sách bên cạnh mà không bao giờ cắt phạm vào chữ!
    */
   function detectDocumentCorners(imgOrCanvas) {
     const analysisSize = 360;
@@ -132,34 +135,38 @@
     ctx.drawImage(imgOrCanvas, 0, 0, w, h);
     const data = ctx.getImageData(0, 0, w, h).data;
 
-    // 1. Tính độ sáng Luminance và độ bão hòa màu Chroma cho từng pixel
-    const lum = new Float32Array(w * h);
-    const chroma = new Float32Array(w * h);
+    const numPixels = w * h;
+    const lum = new Float32Array(numPixels);
+    const rArr = new Float32Array(numPixels);
+    const gArr = new Float32Array(numPixels);
+    const bArr = new Float32Array(numPixels);
+
     for (let i = 0, p = 0; i < data.length; i += 4, p++) {
       const r = data[i];
       const g = data[i + 1];
       const b = data[i + 2];
+      rArr[p] = r;
+      gArr[p] = g;
+      bArr[p] = b;
       lum[p] = 0.299 * r + 0.587 * g + 0.114 * b;
-      chroma[p] = Math.max(r, g, b) - Math.min(r, g, b);
     }
 
-    // 2. Tính bản đồ nền giấy cục bộ (Local Paper Background) bằng bộ lọc cực đại 9x9 tách rời ngang-dọc
-    // Bộ lọc này xóa bỏ các nét chữ mảnh và giữ lại độ sáng thực của nền giấy tại mọi vị trí
+    // GIAI ĐOẠN 1: Phép Đóng Hình Thái Học (Morphological Closing = Dilation + Erosion bán kính 4px)
     const radius = 4;
-    const maxHoriz = new Float32Array(w * h);
-    const localBg = new Float32Array(w * h);
+    const tmpHoriz = new Float32Array(numPixels);
+    const dilatedLum = new Float32Array(numPixels);
 
     for (let y = 0; y < h; y++) {
-      const rowOffset = y * w;
+      const rowOff = y * w;
       for (let x = 0; x < w; x++) {
-        let m = 0;
+        let maxV = 0;
         const x0 = Math.max(0, x - radius);
         const x1 = Math.min(w - 1, x + radius);
         for (let xx = x0; xx <= x1; xx++) {
-          const v = lum[rowOffset + xx];
-          if (v > m) m = v;
+          const v = lum[rowOff + xx];
+          if (v > maxV) maxV = v;
         }
-        maxHoriz[rowOffset + x] = m;
+        tmpHoriz[rowOff + x] = maxV;
       }
     }
 
@@ -167,104 +174,390 @@
       const y0 = Math.max(0, y - radius);
       const y1 = Math.min(h - 1, y + radius);
       for (let x = 0; x < w; x++) {
-        let m = 0;
+        let maxV = 0;
         for (let yy = y0; yy <= y1; yy++) {
-          const v = maxHoriz[yy * w + x];
-          if (v > m) m = v;
+          const v = tmpHoriz[yy * w + x];
+          if (v > maxV) maxV = v;
         }
-        localBg[y * w + x] = m;
+        dilatedLum[y * w + x] = maxV;
       }
     }
 
-    // 3. Đo đặc trưng nền giấy ở vùng trung tâm ảnh (nơi chắc chắn là trang sách)
-    let centerBgSum = 0;
-    let centerChromaSum = 0;
-    let centerCnt = 0;
-    const cx0 = Math.floor(w * 0.25);
-    const cx1 = Math.floor(w * 0.75);
+    const closedLum = new Float32Array(numPixels);
+    for (let y = 0; y < h; y++) {
+      const rowOff = y * w;
+      for (let x = 0; x < w; x++) {
+        let minV = 255;
+        const x0 = Math.max(0, x - radius);
+        const x1 = Math.min(w - 1, x + radius);
+        for (let xx = x0; xx <= x1; xx++) {
+          const v = dilatedLum[rowOff + xx];
+          if (v < minV) minV = v;
+        }
+        tmpHoriz[rowOff + x] = minV;
+      }
+    }
+
+    for (let y = 0; y < h; y++) {
+      const y0 = Math.max(0, y - radius);
+      const y1 = Math.min(h - 1, y + radius);
+      for (let x = 0; x < w; x++) {
+        let minV = 255;
+        for (let yy = y0; yy <= y1; yy++) {
+          const v = tmpHoriz[yy * w + x];
+          if (v < minV) minV = v;
+        }
+        closedLum[y * w + x] = minV;
+      }
+    }
+
+    // Lấy mẫu màu sắc & độ sáng chuẩn của giấy ở tâm trang sách chính
+    let refLumSum = 0, refRSum = 0, refGSum = 0, refBSum = 0, refCnt = 0;
+    const cx0 = Math.floor(w * 0.30);
+    const cx1 = Math.floor(w * 0.70);
     const cy0 = Math.floor(h * 0.25);
     const cy1 = Math.floor(h * 0.75);
 
     for (let y = cy0; y <= cy1; y += 2) {
       for (let x = cx0; x <= cx1; x += 2) {
         const idx = y * w + x;
-        centerBgSum += localBg[idx];
-        centerChromaSum += chroma[idx];
-        centerCnt++;
+        if (dilatedLum[idx] - lum[idx] < 18) {
+          refLumSum += closedLum[idx];
+          refRSum += rArr[idx];
+          refGSum += gArr[idx];
+          refBSum += bArr[idx];
+          refCnt++;
+        }
       }
     }
 
-    const centerPaperBg = centerCnt > 0 ? centerBgSum / centerCnt : 200;
-    const centerPaperChroma = centerCnt > 0 ? centerChromaSum / centerCnt : 15;
+    const refLum = refCnt > 0 ? refLumSum / refCnt : 205;
+    const refR = refCnt > 0 ? refRSum / refCnt : 205;
+    const refG = refCnt > 0 ? refGSum / refCnt : 205;
+    const refB = refCnt > 0 ? refBSum / refCnt : 205;
 
-    // Ngưỡng nhận diện nền trang giấy (chịu được cả vùng bóng râm tối hơn 42% so với tâm trang)
-    const minPaperBg = Math.max(92, centerPaperBg * 0.58);
-    const maxPaperChroma = Math.max(48, centerPaperChroma + 36);
+    const colorDist = new Float32Array(numPixels);
+    const isPaperSurface = new Uint8Array(numPixels);
+    const minPaperLum = Math.max(88, refLum * 0.62);
+    const maxPaperColorDist = 52;
 
-    const isPaper = new Uint8Array(w * h);
-    for (let i = 0; i < w * h; i++) {
-      if (localBg[i] >= minPaperBg && chroma[i] <= maxPaperChroma) {
-        isPaper[i] = 1;
+    for (let p = 0; p < numPixels; p++) {
+      const lumRatio = closedLum[p] > 40 ? refLum / Math.max(60, dilatedLum[p]) : 1.0;
+      const clampedRatio = clamp(lumRatio, 0.7, 1.45);
+      const dr = rArr[p] * clampedRatio - refR;
+      const dg = gArr[p] * clampedRatio - refG;
+      const db = bArr[p] * clampedRatio - refB;
+      const cd = Math.sqrt(dr * dr + dg * dg + db * db);
+      colorDist[p] = cd;
+
+      if (closedLum[p] >= minPaperLum && cd <= maxPaperColorDist) {
+        isPaperSurface[p] = 1;
       }
     }
 
-    // 4. Quét tìm 4 cạnh của trang giấy từ rìa ảnh vào tâm
+    // GIAI ĐOẠN 2: Nhận diện Nét Chữ (Ink Map) & Phát hiện Rãnh Gáy Sách / Trang Sách Bên Cạnh
+    const inkDiffThresh = Math.max(20, refLum * 0.13);
+    const rawInk = new Uint8Array(numPixels);
+    for (let y = 2; y < h - 2; y++) {
+      for (let x = 2; x < w - 2; x++) {
+        const idx = y * w + x;
+        if (isPaperSurface[idx] && dilatedLum[idx] - lum[idx] >= inkDiffThresh) {
+          rawInk[idx] = 1;
+        }
+      }
+    }
+
+    const cleanInk = new Uint8Array(numPixels);
+    const colInk = new Uint16Array(w);
+    const rowInk = new Uint16Array(h);
+
+    for (let y = Math.floor(h * 0.05); y < Math.floor(h * 0.95); y++) {
+      for (let x = Math.floor(w * 0.04); x < Math.floor(w * 0.96); x++) {
+        const idx = y * w + x;
+        if (!rawInk[idx]) continue;
+        const nb =
+          rawInk[idx - w - 1] + rawInk[idx - w] + rawInk[idx - w + 1] +
+          rawInk[idx - 1] + rawInk[idx + 1] +
+          rawInk[idx + w - 1] + rawInk[idx + w] + rawInk[idx + w + 1];
+        if (nb >= 2) {
+          cleanInk[idx] = 1;
+          colInk[x]++;
+          rowInk[y]++;
+        }
+      }
+    }
+
+    const colMeanLum = new Float32Array(w);
+    const colEdgeStrength = new Float32Array(w);
+    const yBand0 = Math.floor(h * 0.18);
+    const yBand1 = Math.floor(h * 0.82);
+    const bandHeight = Math.max(1, yBand1 - yBand0);
+
+    for (let x = 3; x < w - 3; x++) {
+      let sumL = 0, sumEdge = 0;
+      for (let y = yBand0; y < yBand1; y++) {
+        const idx = y * w + x;
+        sumL += closedLum[idx];
+        sumEdge += Math.abs(closedLum[idx + 2] - closedLum[idx - 2]) + Math.abs(colorDist[idx + 2] - colorDist[idx - 2]) * 0.7;
+      }
+      colMeanLum[x] = sumL / bandHeight;
+      colEdgeStrength[x] = sumEdge / bandHeight;
+    }
+
+    let leftPageLimit = Math.floor(w * 0.015);
+    let rightPageLimit = Math.floor(w * 0.985);
+
+    const minMarginGapCols = Math.max(4, Math.round(w * 0.028));
+    let mainTextLeft = Math.floor(w * 0.12);
+    let mainTextRight = Math.floor(w * 0.88);
+
+    for (let x = Math.floor(w * 0.45); x >= Math.floor(w * 0.04); x--) {
+      let emptyRun = 0;
+      for (let k = 0; k < minMarginGapCols && x - k >= 0; k++) {
+        if (colInk[x - k] <= 1) emptyRun++;
+      }
+      if (emptyRun >= minMarginGapCols) {
+        mainTextLeft = x + 1;
+        break;
+      }
+    }
+
+    for (let x = Math.floor(w * 0.55); x <= Math.floor(w * 0.96); x++) {
+      let emptyRun = 0;
+      for (let k = 0; k < minMarginGapCols && x + k < w; k++) {
+        if (colInk[x + k] <= 1) emptyRun++;
+      }
+      if (emptyRun >= minMarginGapCols) {
+        mainTextRight = x - 1;
+        break;
+      }
+    }
+
+    let bestLeftBoundaryX = Math.max(Math.floor(w * 0.015), mainTextLeft - Math.round(w * 0.055));
+    let maxLeftSpineScore = -1;
+    for (let x = mainTextLeft - 2; x >= Math.floor(w * 0.02); x--) {
+      const lumDrop = Math.max(0, refLum - colMeanLum[x]);
+      const localValley = Math.max(0, (colMeanLum[Math.min(w - 1, x + 5)] + colMeanLum[Math.max(0, x - 5)]) * 0.5 - colMeanLum[x]);
+      const score = colEdgeStrength[x] * 1.4 + lumDrop * 0.7 + localValley * 2.5 - colInk[x] * 4;
+      if (score > maxLeftSpineScore && score > 14) {
+        maxLeftSpineScore = score;
+        bestLeftBoundaryX = x;
+      }
+      if (x < mainTextLeft - minMarginGapCols && colInk[x] >= 4 && colInk[x - 1] >= 4) {
+        leftPageLimit = x + 2;
+        break;
+      }
+    }
+    leftPageLimit = Math.max(leftPageLimit, Math.min(bestLeftBoundaryX, mainTextLeft - Math.round(w * 0.02)));
+
+    let bestRightBoundaryX = Math.min(Math.floor(w * 0.985), mainTextRight + Math.round(w * 0.055));
+    let maxRightSpineScore = -1;
+    for (let x = mainTextRight + 2; x <= Math.floor(w * 0.98); x++) {
+      const lumDrop = Math.max(0, refLum - colMeanLum[x]);
+      const localValley = Math.max(0, (colMeanLum[Math.min(w - 1, x + 5)] + colMeanLum[Math.max(0, x - 5)]) * 0.5 - colMeanLum[x]);
+      const score = colEdgeStrength[x] * 1.4 + lumDrop * 0.7 + localValley * 2.5 - colInk[x] * 4;
+      if (score > maxRightSpineScore && score > 14) {
+        maxRightSpineScore = score;
+        bestRightBoundaryX = x;
+      }
+      if (x > mainTextRight + minMarginGapCols && colInk[x] >= 4 && colInk[x + 1] >= 4) {
+        rightPageLimit = x - 2;
+        break;
+      }
+    }
+    rightPageLimit = Math.min(rightPageLimit, Math.max(bestRightBoundaryX, mainTextRight + Math.round(w * 0.02)));
+
+    const mainRowInk = new Uint16Array(h);
+    const rowLeftInk = new Int16Array(h).fill(mainTextLeft);
+    const rowRightInk = new Int16Array(h).fill(mainTextRight);
+
+    for (let y = Math.floor(h * 0.04); y < Math.floor(h * 0.96); y++) {
+      let firstX = -1, lastX = -1, cnt = 0;
+      for (let x = mainTextLeft; x <= mainTextRight; x++) {
+        if (cleanInk[y * w + x]) {
+          if (firstX === -1) firstX = x;
+          lastX = x;
+          cnt++;
+        }
+      }
+      mainRowInk[y] = cnt;
+      if (cnt >= 2) {
+        rowLeftInk[y] = firstX;
+        rowRightInk[y] = lastX;
+      }
+    }
+
+    let mainTextTop = Math.floor(h * 0.10);
+    let mainTextBottom = Math.floor(h * 0.90);
+    const minMarginGapRows = Math.max(4, Math.round(h * 0.028));
+
+    for (let y = Math.floor(h * 0.45); y >= Math.floor(h * 0.03); y--) {
+      let emptyRun = 0;
+      for (let k = 0; k < minMarginGapRows && y - k >= 0; k++) {
+        if (mainRowInk[y - k] <= 1) emptyRun++;
+      }
+      if (emptyRun >= minMarginGapRows) {
+        mainTextTop = y + 1;
+        break;
+      }
+    }
+
+    for (let y = Math.floor(h * 0.55); y <= Math.floor(h * 0.97); y++) {
+      let emptyRun = 0;
+      for (let k = 0; k < minMarginGapRows && y + k < h; k++) {
+        if (mainRowInk[y + k] <= 1) emptyRun++;
+      }
+      if (emptyRun >= minMarginGapRows) {
+        mainTextBottom = y - 1;
+        break;
+      }
+    }
+
+    // GIAI ĐOẠN 3: Quét Từ Trong Ra Ngoài (Inside-Out Edge Scan)
     const leftEdgePts = [];
     const rightEdgePts = [];
     const topEdgePts = [];
     const bottomEdgePts = [];
 
-    const runLen = 5;
-    const yStart = Math.floor(h * 0.12);
-    const yEnd = Math.floor(h * 0.88);
-    for (let y = yStart; y <= yEnd; y += 2) {
-      for (let x = 2; x < w * 0.46; x++) {
-        let ok = true;
-        for (let k = 0; k < runLen; k++) {
-          if (!isPaper[y * w + x + k]) { ok = false; break; }
+    const maxSearchMarginX = Math.round(w * 0.095);
+    const defaultNicePadX = Math.round(w * 0.034);
+    const minSafePadX = Math.round(w * 0.018);
+
+    const scanY0 = Math.max(Math.floor(h * 0.12), mainTextTop);
+    const scanY1 = Math.min(Math.floor(h * 0.88), mainTextBottom);
+
+    for (let y = scanY0; y <= scanY1; y += 2) {
+      const anchorLeftX = mainRowInk[y] >= 2 ? Math.min(mainTextLeft + Math.round(w * 0.04), rowLeftInk[y]) : mainTextLeft;
+      const startLeftX = Math.max(3, anchorLeftX - minSafePadX);
+      const stopLeftX = Math.max(3, Math.min(leftPageLimit, anchorLeftX - maxSearchMarginX));
+
+      let foundLeftX = Math.max(leftPageLimit, anchorLeftX - defaultNicePadX);
+      let bestLeftGrad = 14;
+
+      for (let x = startLeftX; x >= stopLeftX; x--) {
+        const idxIn = y * w + Math.min(w - 1, x + 2);
+        const idxOut = y * w + Math.max(0, x - 2);
+        const idxFarOut = y * w + Math.max(0, x - 4);
+
+        const lumStep = closedLum[idxIn] - closedLum[idxOut];
+        const colorStep = colorDist[idxOut] - colorDist[idxIn];
+        const spineDip = (closedLum[idxIn] + closedLum[idxFarOut]) * 0.5 - closedLum[y * w + x];
+        const gradScore = lumStep + colorStep * 0.85 + Math.max(0, spineDip * 2.2);
+
+        if (gradScore > bestLeftGrad) {
+          bestLeftGrad = gradScore;
+          foundLeftX = x;
         }
-        if (ok) { leftEdgePts.push({ x, y }); break; }
-      }
-      for (let x = w - 3; x > w * 0.54; x--) {
-        let ok = true;
-        for (let k = 0; k < runLen; k++) {
-          if (!isPaper[y * w + x - k]) { ok = false; break; }
+        if (!isPaperSurface[idxOut] && !isPaperSurface[idxFarOut]) {
+          if (bestLeftGrad <= 14) foundLeftX = x;
+          break;
         }
-        if (ok) { rightEdgePts.push({ x, y }); break; }
       }
+      leftEdgePts.push({ x: foundLeftX, y });
+
+      const anchorRightX = mainRowInk[y] >= 2 ? Math.max(mainTextRight - Math.round(w * 0.04), rowRightInk[y]) : mainTextRight;
+      const startRightX = Math.min(w - 4, anchorRightX + minSafePadX);
+      const stopRightX = Math.min(w - 4, Math.max(rightPageLimit, anchorRightX + maxSearchMarginX));
+
+      let foundRightX = Math.min(rightPageLimit, anchorRightX + defaultNicePadX);
+      let bestRightGrad = 14;
+
+      for (let x = startRightX; x <= stopRightX; x++) {
+        const idxIn = y * w + Math.max(0, x - 2);
+        const idxOut = y * w + Math.min(w - 1, x + 2);
+        const idxFarOut = y * w + Math.min(w - 1, x + 4);
+
+        const lumStep = closedLum[idxIn] - closedLum[idxOut];
+        const colorStep = colorDist[idxOut] - colorDist[idxIn];
+        const spineDip = (closedLum[idxIn] + closedLum[idxFarOut]) * 0.5 - closedLum[y * w + x];
+        const gradScore = lumStep + colorStep * 0.85 + Math.max(0, spineDip * 2.2);
+
+        if (gradScore > bestRightGrad) {
+          bestRightGrad = gradScore;
+          foundRightX = x;
+        }
+        if (!isPaperSurface[idxOut] && !isPaperSurface[idxFarOut]) {
+          if (bestRightGrad <= 14) foundRightX = x;
+          break;
+        }
+      }
+      rightEdgePts.push({ x: foundRightX, y });
     }
 
-    const xStart = Math.floor(w * 0.12);
-    const xEnd = Math.floor(w * 0.88);
-    for (let x = xStart; x <= xEnd; x += 2) {
-      for (let y = 2; y < h * 0.46; y++) {
-        let ok = true;
-        for (let k = 0; k < runLen; k++) {
-          if (!isPaper[(y + k) * w + x]) { ok = false; break; }
+    const maxSearchMarginY = Math.round(h * 0.10);
+    const defaultNicePadY = Math.round(h * 0.034);
+    const minSafePadY = Math.round(h * 0.018);
+
+    const scanX0 = Math.max(Math.floor(w * 0.14), mainTextLeft);
+    const scanX1 = Math.min(Math.floor(w * 0.86), mainTextRight);
+
+    for (let x = scanX0; x <= scanX1; x += 2) {
+      const startTopY = Math.max(3, mainTextTop - minSafePadY);
+      const stopTopY = Math.max(3, mainTextTop - maxSearchMarginY);
+      let foundTopY = Math.max(3, mainTextTop - defaultNicePadY);
+      let bestTopGrad = 14;
+
+      for (let y = startTopY; y >= stopTopY; y--) {
+        const idxIn = Math.min(h - 1, y + 2) * w + x;
+        const idxOut = Math.max(0, y - 2) * w + x;
+        const idxFarOut = Math.max(0, y - 4) * w + x;
+
+        const lumStep = closedLum[idxIn] - closedLum[idxOut];
+        const colorStep = colorDist[idxOut] - colorDist[idxIn];
+        const gradScore = lumStep + colorStep * 0.85;
+
+        if (gradScore > bestTopGrad) {
+          bestTopGrad = gradScore;
+          foundTopY = y;
         }
-        if (ok) { topEdgePts.push({ x, y }); break; }
-      }
-      for (let y = h - 3; y > h * 0.54; y--) {
-        let ok = true;
-        for (let k = 0; k < runLen; k++) {
-          if (!isPaper[(y - k) * w + x]) { ok = false; break; }
+        if (!isPaperSurface[idxOut] && !isPaperSurface[idxFarOut]) {
+          if (bestTopGrad <= 14) foundTopY = y;
+          break;
         }
-        if (ok) { bottomEdgePts.push({ x, y }); break; }
       }
+      topEdgePts.push({ x, y: foundTopY });
+
+      const startBotY = Math.min(h - 4, mainTextBottom + minSafePadY);
+      const stopBotY = Math.min(h - 4, mainTextBottom + maxSearchMarginY);
+      let foundBotY = Math.min(h - 4, mainTextBottom + defaultNicePadY);
+      let bestBotGrad = 14;
+
+      for (let y = startBotY; y <= stopBotY; y++) {
+        const idxIn = Math.max(0, y - 2) * w + x;
+        const idxOut = Math.min(h - 1, y + 2) * w + x;
+        const idxFarOut = Math.min(h - 1, y + 4) * w + x;
+
+        const lumStep = closedLum[idxIn] - closedLum[idxOut];
+        const colorStep = colorDist[idxOut] - colorDist[idxIn];
+        const gradScore = lumStep + colorStep * 0.85;
+
+        if (gradScore > bestBotGrad) {
+          bestBotGrad = gradScore;
+          foundBotY = y;
+        }
+        if (!isPaperSurface[idxOut] && !isPaperSurface[idxFarOut]) {
+          if (bestBotGrad <= 14) foundBotY = y;
+          break;
+        }
+      }
+      bottomEdgePts.push({ x, y: foundBotY });
     }
 
-    // Khớp 4 đường thẳng bền vững cho 4 mép trang giấy
-    const leftLine = fitLineXY(leftEdgePts, 'x_of_y', 2, h);
-    const rightLine = fitLineXY(rightEdgePts, 'x_of_y', w - 3, h);
-    const topLine = fitLineXY(topEdgePts, 'y_of_x', 2, w);
-    const bottomLine = fitLineXY(bottomEdgePts, 'y_of_x', h - 3, w);
+    tempCanvas.width = 0;
+    tempCanvas.height = 0;
 
-    let tl = intersectLines(leftLine, topLine, w, h, { x: 0.03 * w, y: 0.03 * h });
-    let tr = intersectLines(rightLine, topLine, w, h, { x: 0.97 * w, y: 0.03 * h });
-    let br = intersectLines(rightLine, bottomLine, w, h, { x: 0.97 * w, y: 0.97 * h });
-    let bl = intersectLines(leftLine, bottomLine, w, h, { x: 0.03 * w, y: 0.97 * h });
+    // GIAI ĐOẠN 4: Khớp 4 đường thẳng viền trang sách và tìm 4 góc giao điểm
+    const leftLine = fitLineXY(leftEdgePts, 'x_of_y', Math.max(4, mainTextLeft - defaultNicePadX), h);
+    const rightLine = fitLineXY(rightEdgePts, 'x_of_y', Math.min(w - 5, mainTextRight + defaultNicePadX), h);
+    const topLine = fitLineXY(topEdgePts, 'y_of_x', Math.max(4, mainTextTop - defaultNicePadY), w);
+    const bottomLine = fitLineXY(bottomEdgePts, 'y_of_x', Math.min(h - 5, mainTextBottom + defaultNicePadY), w);
 
-    const shrink = 0.008;
+    let tl = intersectLines(leftLine, topLine, w, h, { x: mainTextLeft - defaultNicePadX, y: mainTextTop - defaultNicePadY });
+    let tr = intersectLines(rightLine, topLine, w, h, { x: mainTextRight + defaultNicePadX, y: mainTextTop - defaultNicePadY });
+    let br = intersectLines(rightLine, bottomLine, w, h, { x: mainTextRight + defaultNicePadX, y: mainTextBottom + defaultNicePadY });
+    let bl = intersectLines(leftLine, bottomLine, w, h, { x: mainTextLeft - defaultNicePadX, y: mainTextBottom + defaultNicePadY });
+
+    const shrink = 0.005;
     const centerPt = {
       x: (tl.x + tr.x + br.x + bl.x) * 0.25,
       y: (tl.y + tr.y + br.y + bl.y) * 0.25
@@ -274,113 +567,20 @@
     br = { x: br.x + (centerPt.x - br.x) * shrink, y: br.y + (centerPt.y - br.y) * shrink };
     bl = { x: bl.x + (centerPt.x - bl.x) * shrink, y: bl.y + (centerPt.y - bl.y) * shrink };
 
-    // 5. PHÁT HIỆN VÙNG CHỮ & NỘI DUNG BÊN TRONG TRANG GIẤY (TEXT PROTECTION ENGINE)
-    // Đảm bảo khung cắt KHÔNG BAO GIỜ cắt mất bất kỳ chữ cái, tiêu đề hay số trang nào!
-    const inkDiffThreshold = Math.max(22, centerPaperBg * 0.14);
-    const isInk = new Uint8Array(w * h);
+    const safeL = Math.max(2, mainTextLeft - minSafePadX);
+    const safeR = Math.min(w - 3, mainTextRight + minSafePadX);
+    const safeT = Math.max(2, mainTextTop - minSafePadY);
+    const safeB = Math.min(h - 3, mainTextBottom + minSafePadY);
 
-    for (let y = Math.floor(h * 0.04); y < Math.floor(h * 0.96); y++) {
-      const leftBoundAtY = leftLine.m * y + leftLine.c + w * 0.025;
-      const rightBoundAtY = rightLine.m * y + rightLine.c - w * 0.025;
+    tl.x = Math.min(tl.x, safeL);
+    bl.x = Math.min(bl.x, safeL);
+    tr.x = Math.max(tr.x, safeR);
+    br.x = Math.max(br.x, safeR);
 
-      for (let x = Math.floor(w * 0.04); x < Math.floor(w * 0.96); x++) {
-        if (x < leftBoundAtY || x > rightBoundAtY) continue;
-        const topBoundAtX = topLine.m * x + topLine.c + h * 0.025;
-        const bottomBoundAtX = bottomLine.m * x + bottomLine.c - h * 0.025;
-        if (y < topBoundAtX || y > bottomBoundAtX) continue;
-
-        const idx = y * w + x;
-        if (localBg[idx] >= minPaperBg && localBg[idx] - lum[idx] >= inkDiffThreshold) {
-          isInk[idx] = 1;
-        }
-      }
-    }
-
-    const rowInkCount = new Uint16Array(h);
-    const colInkCount = new Uint16Array(w);
-    let totalInkPixels = 0;
-
-    for (let y = 2; y < h - 2; y++) {
-      for (let x = 2; x < w - 2; x++) {
-        const idx = y * w + x;
-        if (!isInk[idx]) continue;
-        const neighbors =
-          isInk[idx - w - 1] + isInk[idx - w] + isInk[idx - w + 1] +
-          isInk[idx - 1] + isInk[idx + 1] +
-          isInk[idx + w - 1] + isInk[idx + w] + isInk[idx + w + 1];
-        if (neighbors >= 2) {
-          rowInkCount[y]++;
-          colInkCount[x]++;
-          totalInkPixels++;
-        }
-      }
-    }
-
-    tempCanvas.width = 0;
-    tempCanvas.height = 0;
-
-    if (totalInkPixels > 30) {
-      let textMinY = h * 0.15;
-      let textMaxY = h * 0.85;
-      let textMinX = w * 0.15;
-      let textMaxX = w * 0.85;
-
-      for (let y = 0; y < h; y++) {
-        if (rowInkCount[y] >= 2) { textMinY = y; break; }
-      }
-      for (let y = h - 1; y >= 0; y--) {
-        if (rowInkCount[y] >= 2) { textMaxY = y; break; }
-      }
-      for (let x = 0; x < w; x++) {
-        if (colInkCount[x] >= 2) { textMinX = x; break; }
-      }
-      for (let x = w - 1; x >= 0; x--) {
-        if (colInkCount[x] >= 2) { textMaxX = x; break; }
-      }
-
-      const padX = w * 0.032;
-      const padY = h * 0.032;
-      const safeLeft = Math.max(w * 0.01, textMinX - padX);
-      const safeRight = Math.min(w * 0.99, textMaxX + padX);
-      const safeTop = Math.max(h * 0.01, textMinY - padY);
-      const safeBottom = Math.min(h * 0.99, textMaxY + padY);
-
-      const paperCoversWholeFrame =
-        tl.x < w * 0.025 &&
-        bl.x < w * 0.025 &&
-        tr.x > w * 0.975 &&
-        br.x > w * 0.975 &&
-        tl.y < h * 0.025 &&
-        tr.y < h * 0.025 &&
-        bl.y > h * 0.975 &&
-        br.y > h * 0.975;
-
-      if (paperCoversWholeFrame) {
-        const nicePadX = w * 0.042;
-        const nicePadY = h * 0.042;
-        const cropL = Math.max(w * 0.012, textMinX - nicePadX);
-        const cropR = Math.min(w * 0.988, textMaxX + nicePadX);
-        const cropT = Math.max(h * 0.012, textMinY - nicePadY);
-        const cropB = Math.min(h * 0.988, textMaxY + nicePadY);
-
-        return {
-          tl: { x: clamp(cropL / w, 0.01, 0.45), y: clamp(cropT / h, 0.01, 0.45) },
-          tr: { x: clamp(cropR / w, 0.55, 0.99), y: clamp(cropT / h, 0.01, 0.45) },
-          br: { x: clamp(cropR / w, 0.55, 0.99), y: clamp(cropB / h, 0.55, 0.99) },
-          bl: { x: clamp(cropL / w, 0.01, 0.45), y: clamp(cropB / h, 0.55, 0.99) }
-        };
-      }
-
-      tl.x = Math.min(tl.x, safeLeft);
-      bl.x = Math.min(bl.x, safeLeft);
-      tr.x = Math.max(tr.x, safeRight);
-      br.x = Math.max(br.x, safeRight);
-
-      tl.y = Math.min(tl.y, safeTop);
-      tr.y = Math.min(tr.y, safeTop);
-      bl.y = Math.max(bl.y, safeBottom);
-      br.y = Math.max(br.y, safeBottom);
-    }
+    tl.y = Math.min(tl.y, safeT);
+    tr.y = Math.min(tr.y, safeT);
+    bl.y = Math.max(bl.y, safeB);
+    br.y = Math.max(br.y, safeB);
 
     const quad = {
       tl: { x: clamp(tl.x / w, 0.01, 0.46), y: clamp(tl.y / h, 0.01, 0.46) },
@@ -389,7 +589,7 @@
       bl: { x: clamp(bl.x / w, 0.01, 0.46), y: clamp(bl.y / h, 0.54, 0.99) }
     };
 
-    if (computeQuadNormalizedArea(quad) < 0.22) return getDefaultInsetQuad();
+    if (computeQuadNormalizedArea(quad) < 0.20) return getDefaultInsetQuad();
     return quad;
   }
 
